@@ -231,7 +231,11 @@ data class ChatTool(
     val output: String? = null,
     val images: List<String> = emptyList(),
     val diff: List<ChatHunk> = emptyList(),
+    val todos: List<ChatTodo> = emptyList(),
 )
+
+@Serializable
+data class ChatTodo(val content: String = "", val status: String = "pending", val activeForm: String? = null)
 
 @Serializable
 data class ChatHunk(val oldStart: Int = 0, val newStart: Int = 0, val lines: List<String> = emptyList())

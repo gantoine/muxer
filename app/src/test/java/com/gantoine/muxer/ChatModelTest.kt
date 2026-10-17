@@ -1,6 +1,7 @@
 package com.gantoine.muxer
 
 import com.gantoine.muxer.chat.ChatModel
+import com.gantoine.muxer.chat.ChatTime
 import com.gantoine.muxer.chat.ChatState
 import com.gantoine.muxer.protocol.ChatEntry
 import com.gantoine.muxer.protocol.ChatMessage
@@ -9,6 +10,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
+import java.time.Instant
+import java.time.ZoneId
+import java.util.Locale
 
 class ChatModelTest {
     private val hello = ChatEntry("u1", "user", text = "hello")
@@ -60,5 +64,16 @@ class ChatModelTest {
             ChatEntry("n1", "notice", text = "Interrupted"),
         )
         assertEquals(mapOf("a2" to "Looking.\n\nDone.", "a3" to "Anytime."), ChatModel.turnTexts(entries))
+    }
+
+    @Test
+    fun timesShowTheDayOnlyWhenItIsNotToday() {
+        val now = Instant.parse("2026-10-17T23:30:00Z")
+        val zone = ZoneId.of("America/Toronto")
+        fun time(iso: String) = ChatModel.time(iso, now, zone, Locale.US)?.let { it.copy(time = it.time.replace('\u202F', ' ')) }
+        assertEquals(ChatTime(null, "7:05 PM"), time("2026-10-17T23:05:00Z"))
+        assertEquals(ChatTime("Yesterday", "9:00 AM"), time("2026-10-16T13:00:00Z"))
+        assertNull(ChatModel.time(null, now, zone, Locale.US))
+        assertNull(ChatModel.time("not a time", now, zone, Locale.US))
     }
 }

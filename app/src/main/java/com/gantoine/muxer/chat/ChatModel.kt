@@ -1,7 +1,17 @@
 package com.gantoine.muxer.chat
 
+import com.gantoine.muxer.model.WorkspaceListing
+import com.gantoine.muxer.model.parseInstant
 import com.gantoine.muxer.protocol.ChatEntry
 import com.gantoine.muxer.protocol.ChatMessage
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.time.temporal.ChronoUnit
+import java.util.Locale
+
+data class ChatTime(val day: String?, val time: String)
 
 data class ChatState(val sessionId: String, val entries: List<ChatEntry> = emptyList(), val loaded: Boolean = false)
 
@@ -44,5 +54,18 @@ object ChatModel {
         }
         close()
         return texts
+    }
+
+    fun time(
+        iso: String?,
+        now: Instant = Instant.now(),
+        zone: ZoneId = ZoneId.systemDefault(),
+        locale: Locale = Locale.getDefault(),
+    ): ChatTime? {
+        val instant = parseInstant(iso) ?: return null
+        val moment = instant.atZone(zone)
+        val time = moment.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale))
+        val sameDay = ChronoUnit.DAYS.between(moment.toLocalDate(), now.atZone(zone).toLocalDate()) <= 0L
+        return ChatTime(if (sameDay) null else WorkspaceListing.time(instant, now, zone, locale), time)
     }
 }

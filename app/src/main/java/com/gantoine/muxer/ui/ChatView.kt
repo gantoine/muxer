@@ -3,6 +3,7 @@ package com.gantoine.muxer.ui
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
@@ -13,6 +14,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +24,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,11 +40,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
@@ -64,12 +72,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.gantoine.muxer.chat.ChatModel
 import com.gantoine.muxer.chat.ChatState
@@ -78,10 +91,13 @@ import com.gantoine.muxer.model.AgentStatus
 import com.gantoine.muxer.model.WorkspaceListing
 import com.gantoine.muxer.protocol.AgentMessage
 import com.gantoine.muxer.protocol.ChatEntry
+import com.gantoine.muxer.protocol.ChatTodo
 import com.gantoine.muxer.protocol.ChatTool
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 private const val AUTO_EXPANDED_DIFF_LINES = 20
+private val TimeRevealWidth = 76.dp
 
 @Composable
 fun ChatView(
@@ -115,6 +131,9 @@ fun ChatView(
     val scrolledAway by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
     val turnTexts = remember(chat.entries) { ChatModel.turnTexts(chat.entries) }
     val lastEntryId = chat.entries.lastOrNull()?.id
+    val latestTodosId = chat.entries.lastOrNull { it.tool?.todos?.isNotEmpty() == true }?.id
+    val reveal = remember { Animatable(0f) }
+    val maxReveal = with(LocalDensity.current) { TimeRevealWidth.toPx() }
     var viewing by remember { mutableStateOf<String?>(null) }
     viewing?.let { id -> ImageViewer(id, chatImages, onDismiss = { viewing = null }) }
     var overlayHeight by remember { mutableIntStateOf(0) }
@@ -132,7 +151,13 @@ fun ChatView(
                 !chat.loaded -> FullWidthMessage("Loading the conversation…")
                 chat.entries.isEmpty() && !thinking -> FullWidthMessage("Send a message to start talking to Claude.")
                 else -> LazyColumn(
-                    Modifier.fillMaxSize(),
+                    Modifier.fillMaxSize().pointerInput(maxReveal) {
+                        val settle: () -> Unit = { scope.launch { reveal.animateTo(0f) } }
+                        detectHorizontalDragGestures(onDragEnd = settle, onDragCancel = settle) { change, dragAmount ->
+                            change.consume()
+                            scope.launch { reveal.snapTo((reveal.value - dragAmount).coerceIn(0f, maxReveal)) }
+                        }
+                    },
                     state = listState,
                     reverseLayout = true,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp + overlayInset),
@@ -141,7 +166,9 @@ fun ChatView(
                     if (thinking) item(key = "thinking") { ThinkingIndicator() }
                     items(chat.entries.asReversed(), key = { it.id }) { entry ->
                         val copyText = turnTexts[entry.id]?.takeUnless { working && entry.id == lastEntryId }
-                        ChatItem(entry, working, copyText, chatImages, onOpenImage = { viewing = it })
+                        RevealsTime(entry.time, reveal = { reveal.value }, maxReveal) {
+                            ChatItem(entry, working, copyText, entry.id == latestTodosId, chatImages, onOpenImage = { viewing = it })
+                        }
                     }
                 }
             }
@@ -192,7 +219,35 @@ private fun JumpToLatestButton(visible: Boolean, onClick: () -> Unit, modifier: 
 }
 
 @Composable
-private fun ChatItem(entry: ChatEntry, working: Boolean, copyText: String?, images: RemoteImages, onOpenImage: (String) -> Unit) {
+private fun RevealsTime(iso: String?, reveal: () -> Float, maxReveal: Float, content: @Composable () -> Unit) {
+    val time = remember(iso) { ChatModel.time(iso) }
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.offset { IntOffset(-reveal().roundToInt(), 0) }) { content() }
+        if (time != null) {
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .width(TimeRevealWidth)
+                    .offset { IntOffset((maxReveal - reveal()).roundToInt(), 0) }
+                    .graphicsLayer { alpha = reveal() / maxReveal },
+            ) {
+                time.day?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Text(time.time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatItem(
+    entry: ChatEntry,
+    working: Boolean,
+    copyText: String?,
+    latestTodos: Boolean,
+    images: RemoteImages,
+    onOpenImage: (String) -> Unit,
+) {
     when (entry.kind) {
         "user" -> UserMessage(entry.text.orEmpty(), entry.images, images, onOpenImage)
         "assistant" -> Column {
@@ -200,7 +255,10 @@ private fun ChatItem(entry: ChatEntry, working: Boolean, copyText: String?, imag
             if (copyText != null) CopyButton(copyText, "Copy the reply", Modifier.padding(top = 2.dp))
         }
         "thinking" -> ThinkingBlock(entry.text.orEmpty())
-        "tool" -> entry.tool?.let { ToolCall(it, working, images, onOpenImage) }
+        "tool" -> entry.tool?.let { tool ->
+            if (tool.todos.isNotEmpty()) TodoCard(tool.todos, working && latestTodos, initiallyExpanded = latestTodos)
+            else ToolCall(tool, working, images, onOpenImage)
+        }
         "notice" -> Notice(entry.text.orEmpty())
     }
 }
@@ -332,6 +390,63 @@ private fun ToolCall(tool: ChatTool, working: Boolean, images: RemoteImages, onO
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TodoCard(todos: List<ChatTodo>, working: Boolean, initiallyExpanded: Boolean) {
+    var expanded by remember(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
+    val done = todos.count { it.status == "completed" }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp).animateContentSize()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Checklist, contentDescription = null, tint = muted, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.size(10.dp))
+                Text("To-dos", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                Text("$done of ${todos.size} done", style = MaterialTheme.typography.bodySmall, color = muted)
+                Icon(
+                    if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = if (expanded) "Hide the to-dos" else "Show the to-dos",
+                    tint = muted,
+                    modifier = Modifier.padding(start = 4.dp).size(18.dp),
+                )
+            }
+            if (expanded) {
+                Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (todo in todos) TodoRow(todo, working)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodoRow(todo: ChatTodo, working: Boolean) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val iconSize = Modifier.size(18.dp)
+    Row(verticalAlignment = Alignment.Top) {
+        Box(Modifier.padding(top = 1.dp)) {
+            when (todo.status) {
+                "completed" -> Icon(Icons.Filled.CheckCircle, contentDescription = "Done", tint = BrandGreen, modifier = iconSize)
+                "in_progress" -> if (working) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = iconSize.padding(2.dp))
+                } else {
+                    Icon(Icons.Filled.RadioButtonChecked, contentDescription = "In progress", tint = MaterialTheme.colorScheme.primary, modifier = iconSize)
+                }
+                else -> Icon(Icons.Filled.RadioButtonUnchecked, contentDescription = "To do", tint = muted, modifier = iconSize)
+            }
+        }
+        Spacer(Modifier.size(10.dp))
+        when (todo.status) {
+            "completed" -> Text(todo.content, style = MaterialTheme.typography.bodyMedium, color = muted, textDecoration = TextDecoration.LineThrough)
+            "in_progress" -> Text(todo.activeForm?.takeIf { it.isNotBlank() } ?: todo.content, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            else -> Text(todo.content, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

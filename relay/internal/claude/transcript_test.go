@@ -269,3 +269,21 @@ func TestLongDiffsAreCapped(t *testing.T) {
 		t.Fatalf("hunks = %d, first has %d lines", len(hunks), len(hunks[0].Lines))
 	}
 }
+
+func TestTodoWriteCarriesItsChecklist(t *testing.T) {
+	transcript := NewTranscript()
+	feedAll(transcript,
+		`{"type":"assistant","uuid":"a","message":{"role":"assistant","content":[{"type":"tool_use","id":"td1","name":"TodoWrite","input":{"todos":[{"content":"Rename Sub","status":"completed","activeForm":"Renaming Sub"},{"content":"Add Multiply","status":"in_progress","activeForm":"Adding Multiply"},{"content":" ","status":"pending"},{"content":"Write tests","status":"pending","activeForm":"Writing tests"}]}}]}}`,
+		`{"type":"user","uuid":"u","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"td1","content":"Todos have been modified successfully."}]}}`,
+	)
+	todos := transcript.Entries()[0].Tool.Todos
+	want := []Todo{{"Rename Sub", "completed", "Renaming Sub"}, {"Add Multiply", "in_progress", "Adding Multiply"}, {"Write tests", "pending", "Writing tests"}}
+	if len(todos) != len(want) {
+		t.Fatalf("todos = %+v", todos)
+	}
+	for i := range want {
+		if todos[i] != want[i] {
+			t.Errorf("todo %d = %+v, want %+v", i, todos[i], want[i])
+		}
+	}
+}

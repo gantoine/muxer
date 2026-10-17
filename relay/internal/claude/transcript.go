@@ -32,6 +32,13 @@ type Tool struct {
 	Output  string   `json:"output,omitempty"`
 	Images  []string `json:"images,omitempty"`
 	Diff    []Hunk   `json:"diff,omitempty"`
+	Todos   []Todo   `json:"todos,omitempty"`
+}
+
+type Todo struct {
+	Content    string `json:"content"`
+	Status     string `json:"status"`
+	ActiveForm string `json:"active_form,omitempty"`
 }
 
 type Hunk struct {
@@ -146,7 +153,7 @@ func (t *Transcript) Feed(raw []byte) []Entry {
 				ID:   b.ID,
 				Kind: KindTool,
 				Time: entry.Timestamp,
-				Tool: &Tool{Name: b.Name, Summary: summarize(b.Name, b.Input), Status: ToolRunning},
+				Tool: &Tool{Name: b.Name, Summary: summarize(b.Name, b.Input), Status: ToolRunning, Todos: todos(b.Name, b.Input)},
 			}))
 		case "tool_result":
 			position, ok := t.index[b.ToolUseID]
@@ -186,6 +193,34 @@ func (t *Transcript) attachImages(entry line, changed []Entry, images []string) 
 		}
 	}
 	return append(changed, t.upsert(Entry{ID: prefix + "images", Kind: KindUser, Images: images, Time: entry.Timestamp}))
+}
+
+func todos(name string, raw json.RawMessage) []Todo {
+	if name != "TodoWrite" {
+		return nil
+	}
+	var input struct {
+		Todos []struct {
+			Content    string `json:"content"`
+			Status     string `json:"status"`
+			ActiveForm string `json:"activeForm"`
+		} `json:"todos"`
+	}
+	if json.Unmarshal(raw, &input) != nil {
+		return nil
+	}
+	var items []Todo
+	for _, todo := range input.Todos {
+		if strings.TrimSpace(todo.Content) == "" {
+			continue
+		}
+		items = append(items, Todo{
+			Content:    Truncate(strings.TrimSpace(todo.Content), maxSummaryLength),
+			Status:     todo.Status,
+			ActiveForm: Truncate(strings.TrimSpace(todo.ActiveForm), maxSummaryLength),
+		})
+	}
+	return items
 }
 
 func diffHunks(raw json.RawMessage) []Hunk {
