@@ -2,6 +2,12 @@ package com.gantoine.muxer.ui
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -48,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
@@ -95,17 +102,22 @@ fun ChatView(
     overlay: @Composable () -> Unit = {},
 ) {
     val working = midTurn || status is AgentStatus.Working
+    val thinking = working && chat.loaded && chat.entries.lastOrNull()?.tool?.status != "running"
     val listState = rememberLazyListState()
     var overlayHeight by remember { mutableIntStateOf(0) }
     val overlayInset = with(LocalDensity.current) { overlayHeight.toDp() }
-    LaunchedEffect(chat.entries.lastOrNull()?.id) {
-        if (listState.firstVisibleItemIndex <= 1) listState.animateScrollToItem(0)
+    val itemCount = chat.entries.size + if (thinking) 1 else 0
+    var previousItemCount by remember { mutableIntStateOf(itemCount) }
+    LaunchedEffect(chat.entries.lastOrNull()?.id, thinking) {
+        val added = (itemCount - previousItemCount).coerceAtLeast(1)
+        previousItemCount = itemCount
+        if (listState.firstVisibleItemIndex <= added) listState.animateScrollToItem(0)
     }
     Column(modifier) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 !chat.loaded -> FullWidthMessage("Loading the conversation…")
-                chat.entries.isEmpty() -> FullWidthMessage("Send a message to start talking to Claude.")
+                chat.entries.isEmpty() && !thinking -> FullWidthMessage("Send a message to start talking to Claude.")
                 else -> LazyColumn(
                     Modifier.fillMaxSize(),
                     state = listState,
@@ -113,6 +125,7 @@ fun ChatView(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp + overlayInset),
                     verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Bottom),
                 ) {
+                    if (thinking) item(key = "thinking") { ThinkingIndicator() }
                     items(chat.entries.asReversed(), key = { it.id }) { entry ->
                         ChatItem(entry, working)
                     }
@@ -157,6 +170,35 @@ private fun ChatItem(entry: ChatEntry, working: Boolean) {
         "assistant" -> MarkdownText(entry.text.orEmpty())
         "tool" -> entry.tool?.let { ToolCall(it, working) }
         else -> Notice(entry.text.orEmpty())
+    }
+}
+
+@Composable
+private fun ThinkingIndicator() {
+    val transition = rememberInfiniteTransition(label = "thinking")
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(3) { index ->
+            val alpha by transition.animateFloat(
+                initialValue = 0.25f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 600),
+                    repeatMode = RepeatMode.Reverse,
+                    initialStartOffset = StartOffset(index * 200),
+                ),
+                label = "dot$index",
+            )
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .alpha(alpha)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
+            )
+        }
     }
 }
 
@@ -333,7 +375,7 @@ private fun ChatComposer(
                 placeholder = { Text(if (messagingAgent) "Send message after you answer" else "Message Claude") },
             leadingIcon = { AttachImageButton(enabled = !sendingImages, onClick = onAttachImages) },
                 maxLines = 6,
-                shape = RoundedCornerShape(50),
+                shape = ComposerShape,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true),
                 modifier = Modifier.weight(1f),
             )

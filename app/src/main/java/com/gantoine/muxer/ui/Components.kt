@@ -85,6 +85,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+val ComposerShape = RoundedCornerShape(28.dp)
+
 fun groupedShape(index: Int, count: Int): Shape {
     val large = 24.dp
     val small = 6.dp

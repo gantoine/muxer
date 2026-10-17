@@ -667,7 +667,7 @@ private fun Composer(
                 null
             },
             maxLines = 5,
-            shape = RoundedCornerShape(50),
+            shape = ComposerShape,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true),
             modifier = Modifier.weight(1f),
         )
