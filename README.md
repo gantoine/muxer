@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" width="128" height="128" alt="Muxer logo: a green gradient chevron and a light cursor">
+  <img src="assets/logo.svg" width="128" height="128" alt="Muxer logo: three green chevrons pointing up, fading as they rise">
 </p>
 
 # Muxer

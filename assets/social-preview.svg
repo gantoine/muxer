@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
   <defs>
-    <linearGradient id="chevron" x1="18.79" y1="54" x2="56.95" y2="54" gradientUnits="userSpaceOnUse">
+    <linearGradient id="signal" x1="54" y1="87.4" x2="54" y2="20.6" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#A8F5C8"/>
       <stop offset="0.52" stop-color="#3DDC84"/>
       <stop offset="1" stop-color="#0F9D58"/>
@@ -9,8 +9,11 @@
   <rect width="1280" height="640" fill="#1E1F29"/>
   <g transform="translate(112 177) scale(2.644)">
     <rect width="108" height="108" rx="25.7" fill="#2A2C3B"/>
-    <path d="M18.79,27.54 L56.95,54.0 L18.79,80.46 L18.79,68.7 L39.06,54.0 L18.79,39.3 Z" fill="url(#chevron)"/>
-    <rect x="61.84" y="71.22" width="27.3" height="9.24" rx="4.62" fill="#E8EDF5"/>
+    <g fill="url(#signal)">
+      <path d="M30.25,54.85 L54,20.6 L77.75,54.85 L77.75,44.35 L54,36.6 L30.25,44.35 Z" opacity="0.45"/>
+      <path d="M30.25,71.1 L54,36.85 L77.75,71.1 L77.75,60.6 L54,52.85 L30.25,60.6 Z" opacity="0.7"/>
+      <path d="M30.25,87.35 L54,53.1 L77.75,87.35 L77.75,76.85 L54,69.1 L30.25,76.85 Z"/>
+    </g>
   </g>
   <g font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
     <text x="466" y="263" font-size="84" font-weight="700" fill="#C6D0F5">Muxer</text>
