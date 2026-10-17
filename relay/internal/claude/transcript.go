@@ -9,8 +9,11 @@ import (
 )
 
 const (
-	maxSummaryLength = 200
-	maxOutputLength  = 2000
+	maxSummaryLength  = 200
+	maxOutputLength   = 2000
+	maxThinkingLength = 8000
+	maxDiffLines      = 400
+	maxDiffLineLength = 300
 )
 
 type Entry struct {
@@ -28,6 +31,13 @@ type Tool struct {
 	Status  string   `json:"status"`
 	Output  string   `json:"output,omitempty"`
 	Images  []string `json:"images,omitempty"`
+	Diff    []Hunk   `json:"diff,omitempty"`
+}
+
+type Hunk struct {
+	OldStart int      `json:"old_start"`
+	NewStart int      `json:"new_start"`
+	Lines    []string `json:"lines"`
 }
 
 const (
@@ -35,6 +45,7 @@ const (
 	KindAssistant = "assistant"
 	KindTool      = "tool"
 	KindNotice    = "notice"
+	KindThinking  = "thinking"
 
 	ToolRunning = "running"
 	ToolDone    = "done"
@@ -48,6 +59,7 @@ type line struct {
 	IsSidechain bool            `json:"isSidechain"`
 	IsMeta      bool            `json:"isMeta"`
 	Message     json.RawMessage `json:"message"`
+	ToolResult  json.RawMessage `json:"toolUseResult"`
 }
 
 type message struct {
@@ -58,6 +70,7 @@ type message struct {
 type block struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
+	Thinking  string          `json:"thinking"`
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Input     json.RawMessage `json:"input"`
@@ -102,10 +115,25 @@ func (t *Transcript) Feed(raw []byte) []Entry {
 	}
 	var changed []Entry
 	var images []string
+	results := 0
+	for _, b := range blocks {
+		if b.Type == "tool_result" {
+			results++
+		}
+	}
 	for i, b := range blocks {
 		switch b.Type {
 		case "text":
 			changed = append(changed, t.addText(entry, i, b.Text)...)
+		case "thinking":
+			if entry.Type == "assistant" && strings.TrimSpace(b.Thinking) != "" {
+				changed = append(changed, t.upsert(Entry{
+					ID:   fmt.Sprintf("%s:%d", entry.UUID, i),
+					Kind: KindThinking,
+					Text: Truncate(strings.TrimSpace(b.Thinking), maxThinkingLength),
+					Time: entry.Timestamp,
+				}))
+			}
 		case "image":
 			if entry.Type == "user" {
 				images = append(images, fmt.Sprintf("%s:%d", entry.UUID, i))
@@ -132,6 +160,9 @@ func (t *Transcript) Feed(raw []byte) []Entry {
 				tool.Status = ToolFailed
 			}
 			tool.Output = Truncate(resultText(b.Content), maxOutputLength)
+			if results == 1 && !b.IsError {
+				tool.Diff = diffHunks(entry.ToolResult)
+			}
 			if !t.sentImages[b.ToolUseID] {
 				tool.Images = resultImages(b.Content, fmt.Sprintf("%s:%d", entry.UUID, i))
 			}
@@ -155,6 +186,54 @@ func (t *Transcript) attachImages(entry line, changed []Entry, images []string) 
 		}
 	}
 	return append(changed, t.upsert(Entry{ID: prefix + "images", Kind: KindUser, Images: images, Time: entry.Timestamp}))
+}
+
+func diffHunks(raw json.RawMessage) []Hunk {
+	var result struct {
+		Type    string `json:"type"`
+		Content string `json:"content"`
+		Patch   []struct {
+			OldStart int      `json:"oldStart"`
+			NewStart int      `json:"newStart"`
+			Lines    []string `json:"lines"`
+		} `json:"structuredPatch"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &result) != nil {
+		return nil
+	}
+	var hunks []Hunk
+	if len(result.Patch) == 0 && result.Type == "create" && result.Content != "" {
+		var lines []string
+		for _, text := range strings.Split(strings.TrimSuffix(result.Content, "\n"), "\n") {
+			lines = append(lines, "+"+text)
+		}
+		hunks = []Hunk{{OldStart: 0, NewStart: 1, Lines: lines}}
+	}
+	for _, patch := range result.Patch {
+		hunks = append(hunks, Hunk{OldStart: patch.OldStart, NewStart: patch.NewStart, Lines: patch.Lines})
+	}
+	return capHunks(hunks)
+}
+
+func capHunks(hunks []Hunk) []Hunk {
+	budget := maxDiffLines
+	var capped []Hunk
+	for _, hunk := range hunks {
+		if budget == 0 {
+			break
+		}
+		lines := hunk.Lines
+		if len(lines) > budget {
+			lines = lines[:budget]
+		}
+		budget -= len(lines)
+		shortened := make([]string, len(lines))
+		for i, text := range lines {
+			shortened[i] = Truncate(text, maxDiffLineLength)
+		}
+		capped = append(capped, Hunk{OldStart: hunk.OldStart, NewStart: hunk.NewStart, Lines: shortened})
+	}
+	return capped
 }
 
 func readsSentImage(name string, raw json.RawMessage) bool {

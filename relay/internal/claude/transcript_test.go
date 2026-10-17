@@ -19,7 +19,7 @@ func TestTranscriptTurnsMessagesIntoEntries(t *testing.T) {
 	feedAll(transcript,
 		`{"type":"summary","summary":"ignored"}`,
 		`{"type":"user","uuid":"u1","timestamp":"t1","message":{"role":"user","content":"fix the tests"}}`,
-		`{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"Running them now."}]}}`,
+		`{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"thinking","thinking":""},{"type":"text","text":"Running them now."}]}}`,
 		`{"type":"assistant","uuid":"a2","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"go test ./...\necho done","description":"Run tests"}}]}}`,
 		`{"type":"user","uuid":"u2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok  all","is_error":false}]}}`,
 		`{"type":"assistant","uuid":"a3","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"subagent chatter"}]}}`,
@@ -229,5 +229,43 @@ func TestReadingAnImageFromThePhoneDoesNotRepeatIt(t *testing.T) {
 	)
 	if tool := transcript.Entries()[0].Tool; tool.Status != ToolDone || tool.Images != nil {
 		t.Errorf("tool = %+v", tool)
+	}
+}
+
+func TestThinkingWithTextBecomesAnEntry(t *testing.T) {
+	transcript := NewTranscript()
+	feedAll(transcript, `{"type":"assistant","uuid":"a1","timestamp":"t1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"  check the tests first  "},{"type":"text","text":"On it."}]}}`)
+	entries := transcript.Entries()
+	if len(entries) != 2 || entries[0].Kind != KindThinking || entries[0].Text != "check the tests first" || entries[0].ID != "a1:0" || entries[1].Kind != KindAssistant {
+		t.Fatalf("entries = %+v", entries)
+	}
+}
+
+func TestEditResultsCarryTheirDiff(t *testing.T) {
+	transcript := NewTranscript()
+	feedAll(transcript,
+		`{"type":"assistant","uuid":"a","message":{"role":"assistant","content":[{"type":"tool_use","id":"e1","name":"Edit","input":{"file_path":"/x/main.go","old_string":"a","new_string":"b"}},{"type":"tool_use","id":"w1","name":"Write","input":{"file_path":"/x/new.txt","content":"one\ntwo\n"}}]}}`,
+		`{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"e1","content":"updated"}]},"toolUseResult":{"filePath":"/x/main.go","structuredPatch":[{"oldStart":3,"oldLines":1,"newStart":3,"newLines":1,"lines":["-a","+b"]}]}}`,
+		`{"type":"user","uuid":"u2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"w1","content":"created"}]},"toolUseResult":{"type":"create","filePath":"/x/new.txt","content":"one\ntwo\n","structuredPatch":[]}}`,
+	)
+	entries := transcript.Entries()
+	edit := entries[0].Tool.Diff
+	if len(edit) != 1 || edit[0].OldStart != 3 || edit[0].NewStart != 3 || len(edit[0].Lines) != 2 || edit[0].Lines[1] != "+b" {
+		t.Errorf("edit diff = %+v", edit)
+	}
+	write := entries[1].Tool.Diff
+	if len(write) != 1 || write[0].NewStart != 1 || len(write[0].Lines) != 2 || write[0].Lines[0] != "+one" || write[0].Lines[1] != "+two" {
+		t.Errorf("write diff = %+v", write)
+	}
+}
+
+func TestLongDiffsAreCapped(t *testing.T) {
+	lines := make([]string, maxDiffLines+50)
+	for i := range lines {
+		lines[i] = "+line"
+	}
+	hunks := capHunks([]Hunk{{OldStart: 1, NewStart: 1, Lines: lines}, {OldStart: 900, NewStart: 900, Lines: []string{"-x"}}})
+	if len(hunks) != 1 || len(hunks[0].Lines) != maxDiffLines {
+		t.Fatalf("hunks = %d, first has %d lines", len(hunks), len(hunks[0].Lines))
 	}
 }

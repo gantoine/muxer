@@ -230,7 +230,11 @@ data class ChatTool(
     val status: String = "running",
     val output: String? = null,
     val images: List<String> = emptyList(),
+    val diff: List<ChatHunk> = emptyList(),
 )
+
+@Serializable
+data class ChatHunk(val oldStart: Int = 0, val newStart: Int = 0, val lines: List<String> = emptyList())
 
 @Serializable
 data class ChatEntry(

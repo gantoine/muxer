@@ -47,4 +47,18 @@ class ChatModelTest {
         assertSame(state, ChatModel.apply(state, ChatMessage("t", "old", reset = true, entries = listOf(hello))))
         assertNull(ChatModel.apply(null, ChatMessage("t", "s1", entries = listOf(hello))))
     }
+
+    @Test
+    fun turnTextsJoinEachTurnsRepliesUnderItsLastReply() {
+        val entries = listOf(
+            hello,
+            ChatEntry("a1", "assistant", text = "Looking."),
+            running,
+            ChatEntry("a2", "assistant", text = "Done."),
+            ChatEntry("u2", "user", text = "thanks"),
+            ChatEntry("a3", "assistant", text = "Anytime."),
+            ChatEntry("n1", "notice", text = "Interrupted"),
+        )
+        assertEquals(mapOf("a2" to "Looking.\n\nDone.", "a3" to "Anytime."), ChatModel.turnTexts(entries))
+    }
 }

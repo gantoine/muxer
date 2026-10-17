@@ -2,15 +2,17 @@ package com.gantoine.muxer.ui
 
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,57 +28,60 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import com.gantoine.muxer.chat.ChatMarkdown
+import com.gantoine.muxer.chat.ChatModel
 import com.gantoine.muxer.chat.ChatState
 import com.gantoine.muxer.images.RemoteImages
-import com.gantoine.muxer.chat.InlineSpan
-import com.gantoine.muxer.chat.MarkdownBlock
 import com.gantoine.muxer.model.AgentStatus
 import com.gantoine.muxer.model.WorkspaceListing
 import com.gantoine.muxer.protocol.AgentMessage
 import com.gantoine.muxer.protocol.ChatEntry
 import com.gantoine.muxer.protocol.ChatTool
+import kotlinx.coroutines.launch
+
+private const val AUTO_EXPANDED_DIFF_LINES = 20
 
 @Composable
 fun ChatView(
@@ -106,6 +111,10 @@ fun ChatView(
     val working = midTurn || status is AgentStatus.Working
     val thinking = working && chat.loaded && chat.entries.lastOrNull()?.tool?.status != "running"
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val scrolledAway by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
+    val turnTexts = remember(chat.entries) { ChatModel.turnTexts(chat.entries) }
+    val lastEntryId = chat.entries.lastOrNull()?.id
     var viewing by remember { mutableStateOf<String?>(null) }
     viewing?.let { id -> ImageViewer(id, chatImages, onDismiss = { viewing = null }) }
     var overlayHeight by remember { mutableIntStateOf(0) }
@@ -131,10 +140,16 @@ fun ChatView(
                 ) {
                     if (thinking) item(key = "thinking") { ThinkingIndicator() }
                     items(chat.entries.asReversed(), key = { it.id }) { entry ->
-                        ChatItem(entry, working, chatImages, onOpenImage = { viewing = it })
+                        val copyText = turnTexts[entry.id]?.takeUnless { working && entry.id == lastEntryId }
+                        ChatItem(entry, working, copyText, chatImages, onOpenImage = { viewing = it })
                     }
                 }
             }
+            JumpToLatestButton(
+                visible = scrolledAway,
+                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 12.dp + overlayInset),
+            )
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
@@ -168,12 +183,56 @@ fun ChatView(
 }
 
 @Composable
-private fun ChatItem(entry: ChatEntry, working: Boolean, images: RemoteImages, onOpenImage: (String) -> Unit) {
+private fun JumpToLatestButton(visible: Boolean, onClick: () -> Unit, modifier: Modifier) {
+    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        SmallFloatingActionButton(onClick = onClick, containerColor = MaterialTheme.colorScheme.surfaceContainerHighest) {
+            Icon(Icons.Filled.ArrowDownward, contentDescription = "Jump to the latest message")
+        }
+    }
+}
+
+@Composable
+private fun ChatItem(entry: ChatEntry, working: Boolean, copyText: String?, images: RemoteImages, onOpenImage: (String) -> Unit) {
     when (entry.kind) {
         "user" -> UserMessage(entry.text.orEmpty(), entry.images, images, onOpenImage)
-        "assistant" -> MarkdownText(entry.text.orEmpty())
+        "assistant" -> Column {
+            MarkdownText(entry.text.orEmpty())
+            if (copyText != null) CopyButton(copyText, "Copy the reply", Modifier.padding(top = 2.dp))
+        }
+        "thinking" -> ThinkingBlock(entry.text.orEmpty())
         "tool" -> entry.tool?.let { ToolCall(it, working, images, onOpenImage) }
-        else -> Notice(entry.text.orEmpty())
+        "notice" -> Notice(entry.text.orEmpty())
+    }
+}
+
+@Composable
+private fun ThinkingBlock(text: String) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().animateContentSize()) {
+        Row(
+            Modifier.clip(RoundedCornerShape(8.dp)).clickable { expanded = !expanded }.padding(vertical = 4.dp, horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Lightbulb, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.size(8.dp))
+            Text("Thinking", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = if (expanded) "Hide the thinking" else "Show the thinking",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        if (expanded) {
+            SelectionContainer {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 26.dp, top = 4.dp),
+                )
+            }
+        }
     }
 }
 
@@ -226,57 +285,14 @@ private fun UserMessage(text: String, imageIds: List<String>, images: RemoteImag
 }
 
 @Composable
-fun MarkdownText(text: String) {
-    val codeBackground = MaterialTheme.colorScheme.surfaceContainerHigh
-    SelectionContainer {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (block in remember(text) { ChatMarkdown.blocks(text) }) {
-                when (block) {
-                    is MarkdownBlock.Heading -> Text(
-                        annotated(block.spans, codeBackground),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    is MarkdownBlock.Paragraph -> Text(
-                        annotated(block.spans, codeBackground),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    is MarkdownBlock.Code -> Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = codeBackground,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            block.code,
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.bodySmall,
-                            softWrap = false,
-                            modifier = Modifier.horizontalScroll(rememberScrollState()).padding(12.dp),
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun annotated(spans: List<InlineSpan>, codeBackground: androidx.compose.ui.graphics.Color): AnnotatedString = buildAnnotatedString {
-    for (span in spans) {
-        when {
-            span.code -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = codeBackground)) { append(span.text) }
-            span.bold -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(span.text) }
-            else -> append(span.text)
-        }
-    }
-}
-
-@Composable
 private fun ToolCall(tool: ChatTool, working: Boolean, images: RemoteImages, onOpenImage: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
+    val diff = tool.diff
+    var expanded by remember(diff.isNotEmpty()) { mutableStateOf(diff.sumOf { it.lines.size } in 1..AUTO_EXPANDED_DIFF_LINES) }
     val output = tool.output?.takeIf { it.isNotBlank() }
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth().clickable(enabled = output != null) { expanded = !expanded },
+        modifier = Modifier.fillMaxWidth().clickable(enabled = output != null || diff.isNotEmpty()) { expanded = !expanded },
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -292,13 +308,20 @@ private fun ToolCall(tool: ChatTool, working: Boolean, images: RemoteImages, onO
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                     )
+                }
+                if (diff.isNotEmpty()) {
+                    Spacer(Modifier.size(8.dp))
+                    DiffCountsLabel(diff)
                 }
             }
             if (tool.images.isNotEmpty()) {
                 Box(Modifier.padding(top = 8.dp)) { ChatImageTiles(tool.images, images, onOpenImage) }
             }
-            if (expanded && output != null) {
+            if (expanded && diff.isNotEmpty()) {
+                DiffView(diff, Modifier.padding(top = 8.dp).fillMaxWidth())
+            } else if (expanded && output != null) {
                 SelectionContainer {
                     Text(
                         output,
@@ -326,14 +349,15 @@ private fun ToolStatusIcon(status: String, working: Boolean) {
 
 @Composable
 private fun Notice(text: String) {
+    var expanded by remember { mutableStateOf(false) }
     Text(
         text,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
-        maxLines = 4,
+        maxLines = if (expanded) Int.MAX_VALUE else 4,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
     )
 }
 

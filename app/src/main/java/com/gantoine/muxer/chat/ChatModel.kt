@@ -28,4 +28,21 @@ object ChatModel {
         }
         return previous.copy(entries = entries, loaded = true)
     }
+
+    fun turnTexts(entries: List<ChatEntry>): Map<String, String> {
+        val texts = mutableMapOf<String, String>()
+        val turn = mutableListOf<ChatEntry>()
+        fun close() {
+            turn.lastOrNull()?.let { last -> texts[last.id] = turn.joinToString("\n\n") { it.text.orEmpty() } }
+            turn.clear()
+        }
+        for (entry in entries) {
+            when (entry.kind) {
+                "user" -> close()
+                "assistant" -> if (!entry.text.isNullOrBlank()) turn += entry
+            }
+        }
+        close()
+        return texts
+    }
 }
