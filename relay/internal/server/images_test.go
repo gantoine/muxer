@@ -116,7 +116,7 @@ func TestPhoneCanFetchImagesFromTheChat(t *testing.T) {
 	if err := os.WriteFile(path, []byte("jpeg bytes"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "2", "path": path})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "2", "image": path})
 	result := resultFor(t, ctx, conn, "2")
 	data, _ := result["data"].(map[string]any)
 	if result["ok"] != true || data["format"] != "jpeg" || data["data_b64"] != base64.StdEncoding.EncodeToString([]byte("jpeg bytes")) {
@@ -130,9 +130,47 @@ func TestPhoneCanFetchImagesFromTheChat(t *testing.T) {
 		"4": dir + "/x/../clipboard-2026-10-17-084701-6FFF738B.jpeg",
 		"5": filepath.Join(dir, "clipboard-2026-10-17-084701-00000000.jpeg"),
 	} {
-		_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": id, "path": other})
+		_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": id, "image": other})
 		if result := resultFor(t, ctx, conn, id); result["ok"] == true {
 			t.Errorf("chat_image served %s: %v", other, result)
 		}
+	}
+}
+
+func TestPhoneCanFetchImagesClaudeLookedAt(t *testing.T) {
+	relay := startRelay(t)
+	ctx, conn := relay.connect(t)
+	transcript := filepath.Join(relay.claudeDir, "projects", "-Users-me-app", "s1.jsonl")
+	if err := os.MkdirAll(filepath.Dir(transcript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	screenshot := base64.StdEncoding.EncodeToString([]byte("png bytes"))
+	lines := `{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/Users/me/app/shot.png"}}]}}` + "\n" +
+		`{"type":"user","uuid":"b2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + screenshot + `"}}]}]}}` + "\n"
+	if err := os.WriteFile(transcript, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "hello", "id": "1"})
+	resultFor(t, ctx, conn, "1")
+	relay.cmux.setAgent(cmux.AgentSession{Kind: "claude", SessionID: "s1", Cwd: "/Users/me/app"})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "attach", "workspace_id": "w1", "surface_id": "t1"})
+
+	chat := readUntil(t, ctx, conn, "chat")
+	entries := chat["entries"].([]any)
+	tool := entries[0].(map[string]any)["tool"].(map[string]any)
+	images, _ := tool["images"].([]any)
+	if len(images) != 1 || images[0] != "b2:0:0" {
+		t.Fatalf("tool entry = %v", tool)
+	}
+
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "2", "image": "b2:0:0"})
+	result := resultFor(t, ctx, conn, "2")
+	data, _ := result["data"].(map[string]any)
+	if result["ok"] != true || data["format"] != "png" || data["data_b64"] != screenshot {
+		t.Fatalf("chat_image = %v", result)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "3", "image": "a1:0"})
+	if result := resultFor(t, ctx, conn, "3"); errorCode(result) != "not_found" {
+		t.Fatalf("a block that isn't an image = %v", result)
 	}
 }

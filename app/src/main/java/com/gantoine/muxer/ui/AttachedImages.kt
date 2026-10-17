@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +36,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gantoine.muxer.images.ChatImages
+import com.gantoine.muxer.images.RemoteImages
 
 private val THUMBNAIL_SIZE = 64.dp
 private val SENT_IMAGE_SIZE = 160.dp
@@ -84,26 +86,30 @@ private fun AttachedImage(uri: Uri, onRemove: () -> Unit) {
 }
 
 @Composable
-fun SentImages(paths: List<String>, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
-    val size = if (paths.size == 1) SENT_IMAGE_SIZE else SENT_IMAGES_SIZE
+fun ChatImageTiles(ids: List<String>, images: RemoteImages, onOpen: (String) -> Unit) {
+    val size = if (ids.size == 1) SENT_IMAGE_SIZE else SENT_IMAGES_SIZE
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        paths.forEach { path -> SentImage(path, size, loadImage) }
+        ids.forEach { id -> ChatImageTile(id, size, images, onClick = { onOpen(id) }) }
     }
 }
 
 @Composable
-private fun SentImage(path: String, size: Dp, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
+private fun ChatImageTile(id: String, size: Dp, images: RemoteImages, onClick: () -> Unit) {
     val edge = with(LocalDensity.current) { SENT_IMAGE_SIZE.roundToPx() }
-    val bitmap by produceState<Bitmap?>(null, path) { value = loadImage(path, edge) }
+    val bitmap by produceState<Bitmap?>(null, id) { value = images.thumbnail(id, edge) }
     Box(
-        Modifier.size(size).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        Modifier
+            .size(size)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(onClickLabel = "View image", onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         val loaded = bitmap
         if (loaded != null) {
-            Image(loaded.asImageBitmap(), contentDescription = "Image sent to Claude", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Image(loaded.asImageBitmap(), contentDescription = "Image in the conversation", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
-            Icon(Icons.Outlined.Image, contentDescription = "Image sent to Claude", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Outlined.Image, contentDescription = "Image in the conversation", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

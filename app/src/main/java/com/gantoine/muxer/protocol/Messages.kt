@@ -224,7 +224,13 @@ data class ErrorResponse(val error: RequestError)
 data class CreatedWorkspace(val workspaceId: String = "", val surfaceId: String = "")
 
 @Serializable
-data class ChatTool(val name: String, val summary: String? = null, val status: String = "running", val output: String? = null)
+data class ChatTool(
+    val name: String,
+    val summary: String? = null,
+    val status: String = "running",
+    val output: String? = null,
+    val images: List<String> = emptyList(),
+)
 
 @Serializable
 data class ChatEntry(

@@ -463,12 +463,21 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 		})
 	case "chat_image":
 		var request struct {
-			Path string `json:"path"`
+			Image string `json:"image"`
 		}
-		if err := json.Unmarshal(raw, &request); err != nil || request.Path == "" {
-			return nil, invalid("chat_image needs a path.")
+		if err := json.Unmarshal(raw, &request); err != nil || request.Image == "" {
+			return nil, invalid("chat_image needs an image.")
 		}
-		return readAttachedImage(request.Path)
+		if strings.HasPrefix(request.Image, "/") {
+			return readAttachedImage(request.Image)
+		}
+		var image cmux.ChatImage
+		err := s.withTerminal(func(current *attachment) error {
+			var err error
+			image, err = s.transcriptImage(ctx, current, request.Image)
+			return err
+		})
+		return image, err
 	case "send_agent_message":
 		var request struct {
 			Text string `json:"text"`

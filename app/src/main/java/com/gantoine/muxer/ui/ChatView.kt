@@ -1,6 +1,5 @@
 package com.gantoine.muxer.ui
 
-import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
@@ -70,6 +69,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.gantoine.muxer.chat.ChatMarkdown
 import com.gantoine.muxer.chat.ChatState
+import com.gantoine.muxer.images.RemoteImages
 import com.gantoine.muxer.chat.InlineSpan
 import com.gantoine.muxer.chat.MarkdownBlock
 import com.gantoine.muxer.model.AgentStatus
@@ -99,13 +99,15 @@ fun ChatView(
     onRemoveImage: (Uri) -> Unit,
     onStop: () -> Unit,
     onShowTerminal: () -> Unit,
-    loadImage: suspend (path: String, edge: Int) -> Bitmap?,
+    chatImages: RemoteImages,
     modifier: Modifier = Modifier,
     overlay: @Composable () -> Unit = {},
 ) {
     val working = midTurn || status is AgentStatus.Working
     val thinking = working && chat.loaded && chat.entries.lastOrNull()?.tool?.status != "running"
     val listState = rememberLazyListState()
+    var viewing by remember { mutableStateOf<String?>(null) }
+    viewing?.let { id -> ImageViewer(id, chatImages, onDismiss = { viewing = null }) }
     var overlayHeight by remember { mutableIntStateOf(0) }
     val overlayInset = with(LocalDensity.current) { overlayHeight.toDp() }
     val itemCount = chat.entries.size + if (thinking) 1 else 0
@@ -129,7 +131,7 @@ fun ChatView(
                 ) {
                     if (thinking) item(key = "thinking") { ThinkingIndicator() }
                     items(chat.entries.asReversed(), key = { it.id }) { entry ->
-                        ChatItem(entry, working, loadImage)
+                        ChatItem(entry, working, chatImages, onOpenImage = { viewing = it })
                     }
                 }
             }
@@ -166,11 +168,11 @@ fun ChatView(
 }
 
 @Composable
-private fun ChatItem(entry: ChatEntry, working: Boolean, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
+private fun ChatItem(entry: ChatEntry, working: Boolean, images: RemoteImages, onOpenImage: (String) -> Unit) {
     when (entry.kind) {
-        "user" -> UserMessage(entry.text.orEmpty(), entry.images, loadImage)
+        "user" -> UserMessage(entry.text.orEmpty(), entry.images, images, onOpenImage)
         "assistant" -> MarkdownText(entry.text.orEmpty())
-        "tool" -> entry.tool?.let { ToolCall(it, working) }
+        "tool" -> entry.tool?.let { ToolCall(it, working, images, onOpenImage) }
         else -> Notice(entry.text.orEmpty())
     }
 }
@@ -205,9 +207,9 @@ private fun ThinkingIndicator() {
 }
 
 @Composable
-private fun UserMessage(text: String, images: List<String>, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
+private fun UserMessage(text: String, imageIds: List<String>, images: RemoteImages, onOpenImage: (String) -> Unit) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (images.isNotEmpty()) SentImages(images, loadImage)
+        if (imageIds.isNotEmpty()) ChatImageTiles(imageIds, images, onOpenImage)
         if (text.isNotBlank()) {
             Surface(
                 shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
@@ -268,7 +270,7 @@ private fun annotated(spans: List<InlineSpan>, codeBackground: androidx.compose.
 }
 
 @Composable
-private fun ToolCall(tool: ChatTool, working: Boolean) {
+private fun ToolCall(tool: ChatTool, working: Boolean, images: RemoteImages, onOpenImage: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val output = tool.output?.takeIf { it.isNotBlank() }
     Surface(
@@ -292,6 +294,9 @@ private fun ToolCall(tool: ChatTool, working: Boolean) {
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+            if (tool.images.isNotEmpty()) {
+                Box(Modifier.padding(top = 8.dp)) { ChatImageTiles(tool.images, images, onOpenImage) }
             }
             if (expanded && output != null) {
                 SelectionContainer {

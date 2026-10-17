@@ -430,8 +430,8 @@ class RelayConnection(
             }
         }).map { }
 
-    suspend fun chatImage(path: String): Result<ChatImageData> =
-        requestAs("chat_image", buildJsonObject { put("path", path) }, "The computer sent no image.")
+    suspend fun chatImage(image: String): Result<ChatImageData> =
+        requestAs("chat_image", buildJsonObject { put("image", image) }, "The computer sent no image.")
 
     suspend fun history(): Result<HistoryResponse> =
         requestOr("history", buildJsonObject { put("lines", HISTORY_LINES) }, HistoryResponse())

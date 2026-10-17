@@ -10,7 +10,6 @@ import android.net.Uri
 import android.os.Build
 import android.util.Base64
 import android.util.Log
-import android.util.LruCache
 import java.io.ByteArrayOutputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -26,11 +25,6 @@ object ChatImages {
     const val MAX_EDGE = 2048
     private const val JPEG_QUALITY = 90
     private const val TAG = "ChatImages"
-    private const val SENT_CACHE_BYTES = 16 * 1024 * 1024
-
-    private val sentThumbnails = object : LruCache<String, Bitmap>(SENT_CACHE_BYTES) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
-    }
 
     fun scaleFor(width: Int, height: Int, maxEdge: Int): Float {
         val longest = max(width, height)
@@ -55,24 +49,6 @@ object ChatImages {
 
     suspend fun thumbnail(resolver: ContentResolver, uri: Uri, edge: Int): Bitmap? = withContext(Dispatchers.IO) {
         runCatching { decode(resolver, uri, edge) }.getOrNull()
-    }
-
-    suspend fun sentThumbnail(path: String, edge: Int, fetch: suspend (String) -> String?): Bitmap? {
-        sentThumbnails.get(path)?.let { return it }
-        val data = fetch(path) ?: return null
-        val bitmap = withContext(Dispatchers.Default) {
-            runCatching { decodeBytes(Base64.decode(data, Base64.DEFAULT), edge) }.getOrNull()
-        } ?: return null
-        sentThumbnails.put(path, bitmap)
-        return bitmap
-    }
-
-    private fun decodeBytes(bytes: ByteArray, edge: Int): Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        var sampleSize = 1
-        while (minOf(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= edge) sampleSize *= 2
-        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sampleSize })
     }
 
     private fun decode(resolver: ContentResolver, uri: Uri, maxEdge: Int): Bitmap =

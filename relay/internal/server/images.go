@@ -67,3 +67,23 @@ func readAttachedImage(path string) (cmux.ChatImage, error) {
 	format := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
 	return cmux.ChatImage{Data: base64.StdEncoding.EncodeToString(data), Format: format}, nil
 }
+
+func (s *session) transcriptImage(ctx context.Context, current *attachment, ref string) (cmux.ChatImage, error) {
+	if !claude.IsImageRef(ref) {
+		return cmux.ChatImage{}, invalid("That isn't an image from this conversation.")
+	}
+	gone := &requestError{Code: "not_found", Message: "That image is no longer in the conversation."}
+	sessionID, cwd, err := s.server.claudeSession(ctx, current.workspaceID, current.surfaceID)
+	if err != nil {
+		return cmux.ChatImage{}, err
+	}
+	path, ok := claude.FindTranscript(s.server.options.ClaudeConfigDir, cwd, sessionID)
+	if sessionID == "" || !ok {
+		return cmux.ChatImage{}, gone
+	}
+	image, err := claude.ReadImage(path, ref)
+	if err != nil {
+		return cmux.ChatImage{}, gone
+	}
+	return cmux.ChatImage{Data: image.Data, Format: strings.TrimPrefix(image.MediaType, "image/")}, nil
+}

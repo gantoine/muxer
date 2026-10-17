@@ -23,10 +23,11 @@ type Entry struct {
 }
 
 type Tool struct {
-	Name    string `json:"name"`
-	Summary string `json:"summary,omitempty"`
-	Status  string `json:"status"`
-	Output  string `json:"output,omitempty"`
+	Name    string   `json:"name"`
+	Summary string   `json:"summary,omitempty"`
+	Status  string   `json:"status"`
+	Output  string   `json:"output,omitempty"`
+	Images  []string `json:"images,omitempty"`
 }
 
 const (
@@ -66,12 +67,13 @@ type block struct {
 }
 
 type Transcript struct {
-	entries []Entry
-	index   map[string]int
+	entries    []Entry
+	index      map[string]int
+	sentImages map[string]bool
 }
 
 func NewTranscript() *Transcript {
-	return &Transcript{index: map[string]int{}}
+	return &Transcript{index: map[string]int{}, sentImages: map[string]bool{}}
 }
 
 func (t *Transcript) Entries() []Entry {
@@ -99,11 +101,19 @@ func (t *Transcript) Feed(raw []byte) []Entry {
 		return nil
 	}
 	var changed []Entry
+	var images []string
 	for i, b := range blocks {
 		switch b.Type {
 		case "text":
 			changed = append(changed, t.addText(entry, i, b.Text)...)
+		case "image":
+			if entry.Type == "user" {
+				images = append(images, fmt.Sprintf("%s:%d", entry.UUID, i))
+			}
 		case "tool_use":
+			if readsSentImage(b.Name, b.Input) {
+				t.sentImages[b.ID] = true
+			}
 			changed = append(changed, t.upsert(Entry{
 				ID:   b.ID,
 				Kind: KindTool,
@@ -122,11 +132,52 @@ func (t *Transcript) Feed(raw []byte) []Entry {
 				tool.Status = ToolFailed
 			}
 			tool.Output = Truncate(resultText(b.Content), maxOutputLength)
+			if !t.sentImages[b.ToolUseID] {
+				tool.Images = resultImages(b.Content, fmt.Sprintf("%s:%d", entry.UUID, i))
+			}
 			updated.Tool = &tool
 			changed = append(changed, t.upsert(updated))
 		}
 	}
+	if len(images) > 0 {
+		changed = t.attachImages(entry, changed, images)
+	}
 	return changed
+}
+
+func (t *Transcript) attachImages(entry line, changed []Entry, images []string) []Entry {
+	prefix := entry.UUID + ":"
+	for i, e := range changed {
+		if e.Kind == KindUser && strings.HasPrefix(e.ID, prefix) {
+			e.Images = append(append([]string(nil), e.Images...), images...)
+			changed[i] = t.upsert(e)
+			return changed
+		}
+	}
+	return append(changed, t.upsert(Entry{ID: prefix + "images", Kind: KindUser, Images: images, Time: entry.Timestamp}))
+}
+
+func readsSentImage(name string, raw json.RawMessage) bool {
+	var input struct {
+		FilePath string `json:"file_path"`
+	}
+	return name == "Read" && json.Unmarshal(raw, &input) == nil && IsAttachedImage(input.FilePath)
+}
+
+func resultImages(raw json.RawMessage, prefix string) []string {
+	var items []struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return nil
+	}
+	var images []string
+	for i, item := range items {
+		if item.Type == "image" {
+			images = append(images, fmt.Sprintf("%s:%d", prefix, i))
+		}
+	}
+	return images
 }
 
 func (t *Transcript) addText(entry line, position int, text string) []Entry {
@@ -160,6 +211,7 @@ var (
 	commandArgs    = regexp.MustCompile(`(?s)<command-args>(.*?)</command-args>`)
 	localOutput    = regexp.MustCompile(`(?s)^\s*<local-command-(stdout|stderr)>(.*?)</local-command-(stdout|stderr)>\s*$`)
 	systemReminder = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+	imageMarker    = regexp.MustCompile(`\[Image(?: #\d+|: source: [^\]]*)\]`)
 	attachedImage  = regexp.MustCompile(`^(/\S*/clipboard-\d{4}-\d{2}-\d{2}-\d{6}-[0-9a-fA-F]{8}\.(?i:jpe?g|png|gif|webp))(?:\s+|$)`)
 )
 
@@ -198,7 +250,7 @@ func cleanText(text, kind string) (string, string) {
 	if strings.HasPrefix(text, "[Request interrupted") {
 		return "Interrupted", KindNotice
 	}
-	return text, kind
+	return strings.TrimSpace(imageMarker.ReplaceAllString(text, "")), kind
 }
 
 func resultText(raw json.RawMessage) string {

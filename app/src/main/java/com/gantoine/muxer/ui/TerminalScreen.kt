@@ -82,6 +82,7 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import com.gantoine.muxer.MuxerApplication
 import com.gantoine.muxer.data.MacStore
 import com.gantoine.muxer.images.ChatImages
+import com.gantoine.muxer.images.RemoteImages
 import com.gantoine.muxer.model.AgentMessaging
 import com.gantoine.muxer.model.AgentStatus
 import com.gantoine.muxer.model.ApprovalReply
@@ -128,6 +129,7 @@ fun TerminalScreen(
     val screen by connection.screen.collectAsState()
     val workspaces by connection.workspaces.collectAsState()
     val chat by connection.chat.collectAsState()
+    val chatImages = remember(connection) { RemoteImages { connection.chatImage(it).getOrNull() } }
     val allApprovals by connection.approvals.collectAsState()
     val approvals = allApprovals.orEmpty().filter { it.surfaceId == surfaceId }
     var sendingApprovals by remember { mutableStateOf(emptySet<String>()) }
@@ -410,7 +412,7 @@ fun TerminalScreen(
                     onRemoveImage = { images = images - it },
                     onStop = { connection.key("escape") },
                     onShowTerminal = { showChat = false },
-                    loadImage = { path, edge -> ChatImages.sentThumbnail(path, edge) { connection.chatImage(it).getOrNull()?.data } },
+                    chatImages = chatImages,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     overlay = { AgentPrompts(retry, approvals, sendingApprovals, ::reply) },
                 )

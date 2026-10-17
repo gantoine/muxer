@@ -177,3 +177,57 @@ func TestImagesSentFromThePhoneBecomeAttachments(t *testing.T) {
 		t.Errorf("typed paths must stay text = %+v", entries[2])
 	}
 }
+
+func TestImagesInMessagesAndToolResultsBecomeReferences(t *testing.T) {
+	transcript := NewTranscript()
+	feedAll(transcript,
+		`{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"text","text":"[Image #3] why is this orange?"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}}`,
+		`{"type":"user","uuid":"u2","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}},{"type":"text","text":"[Image: source: /tmp/shot.png]"}]}}`,
+		`{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/tmp/shot.png"}}]}}`,
+		`{"type":"user","uuid":"r1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"seen"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}]}}`,
+	)
+	entries := transcript.Entries()
+	if len(entries) != 3 {
+		t.Fatalf("got %+v", entries)
+	}
+	if entries[0].Text != "why is this orange?" || len(entries[0].Images) != 1 || entries[0].Images[0] != "u1:1" {
+		t.Errorf("pasted image = %+v", entries[0])
+	}
+	if entries[1].Text != "" || len(entries[1].Images) != 1 || entries[1].Images[0] != "u2:0" {
+		t.Errorf("image without text = %+v", entries[1])
+	}
+	if tool := entries[2].Tool; tool.Output != "seen" || len(tool.Images) != 1 || tool.Images[0] != "r1:0:1" {
+		t.Errorf("tool result = %+v", tool)
+	}
+}
+
+func TestReadImageFindsTheBlockAReferenceNames(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "s.jsonl")
+	content := `{"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"text","text":"hi"},{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"SU1H"}}]}}` + "\n" +
+		`{"type":"user","uuid":"r1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"UE5H"}}]}]}}` + "\n"
+	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if image, err := ReadImage(file, "u1:1"); err != nil || image.Data != "SU1H" || image.MediaType != "image/jpeg" {
+		t.Errorf("message image = %+v, %v", image, err)
+	}
+	if image, err := ReadImage(file, "r1:0:0"); err != nil || image.Data != "UE5H" || image.MediaType != "image/png" {
+		t.Errorf("tool result image = %+v, %v", image, err)
+	}
+	for _, ref := range []string{"u1:0", "u1:5", "missing:0", "../etc:0", "r1:0"} {
+		if _, err := ReadImage(file, ref); err == nil {
+			t.Errorf("ReadImage(%q) found something", ref)
+		}
+	}
+}
+
+func TestReadingAnImageFromThePhoneDoesNotRepeatIt(t *testing.T) {
+	transcript := NewTranscript()
+	feedAll(transcript,
+		`{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/var/folders/xr/abc/T/clipboard-2026-10-17-084701-6FFF738B.jpeg"}}]}}`,
+		`{"type":"user","uuid":"r1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AAAA"}}]}]}}`,
+	)
+	if tool := transcript.Entries()[0].Tool; tool.Status != ToolDone || tool.Images != nil {
+		t.Errorf("tool = %+v", tool)
+	}
+}
