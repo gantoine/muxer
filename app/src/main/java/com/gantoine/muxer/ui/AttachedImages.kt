@@ -1,5 +1,6 @@
 package com.gantoine.muxer.ui
 
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.foundation.Image
@@ -20,12 +21,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,9 +52,31 @@ private val SENT_IMAGE_SIZE = 160.dp
 private val SENT_IMAGES_SIZE = 72.dp
 
 @Composable
-fun AttachImageButton(enabled: Boolean, onClick: () -> Unit) {
-    IconButton(onClick = onClick, enabled = enabled) {
-        Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Attach a screenshot or photo")
+fun AttachImageButton(enabled: Boolean, onPickPhotos: () -> Unit, onTakePhoto: () -> Unit) {
+    val hasCamera = LocalContext.current.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { if (hasCamera) open = true else onPickPhotos() }, enabled = enabled) {
+            Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Attach a screenshot or photo")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Photos") },
+                leadingIcon = { Icon(Icons.Outlined.PhotoLibrary, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onPickPhotos()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Camera") },
+                leadingIcon = { Icon(Icons.Outlined.PhotoCamera, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onTakePhoto()
+                },
+            )
+        }
     }
 }
 

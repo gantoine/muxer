@@ -116,8 +116,11 @@ fun ChatView(
     dictating: Boolean,
     images: List<Uri>,
     sendingImages: Boolean,
-    onAttachImages: () -> Unit,
+    onPickPhotos: () -> Unit,
+    onTakePhoto: () -> Unit,
     onRemoveImage: (Uri) -> Unit,
+    fileSuggestions: List<String>,
+    onPickFile: (String) -> Unit,
     onStop: () -> Unit,
     onShowTerminal: () -> Unit,
     chatImages: RemoteImages,
@@ -192,6 +195,7 @@ fun ChatView(
             Spacer(Modifier.navigationBarsPadding())
             return@Column
         }
+        FileSuggestions(fileSuggestions, onPick = onPickFile)
         ChatComposer(
             draft = draft,
             onDraftChange = onDraftChange,
@@ -199,7 +203,8 @@ fun ChatView(
             messagingAgent = messagingAgent,
             images = images,
             sendingImages = sendingImages,
-            onAttachImages = onAttachImages,
+            onPickPhotos = onPickPhotos,
+            onTakePhoto = onTakePhoto,
             onRemoveImage = onRemoveImage,
             onSend = onSend,
             onDictate = onDictate,
@@ -503,13 +508,15 @@ private fun ChatComposer(
     messagingAgent: Boolean,
     images: List<Uri>,
     sendingImages: Boolean,
-    onAttachImages: () -> Unit,
+    onPickPhotos: () -> Unit,
+    onTakePhoto: () -> Unit,
     onRemoveImage: (Uri) -> Unit,
     onSend: () -> Unit,
     onDictate: () -> Unit,
     dictating: Boolean,
     onStop: () -> Unit,
 ) {
+    var field by rememberDraftField(draft)
     Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface).navigationBarsPadding()) {
         AttachedImages(images, onRemove = onRemoveImage)
         Row(
@@ -519,10 +526,13 @@ private fun ChatComposer(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedTextField(
-                value = draft,
-                onValueChange = onDraftChange,
+                value = field,
+                onValueChange = {
+                    field = it
+                    onDraftChange(it.text)
+                },
                 placeholder = { Text(if (messagingAgent) "Send message after you answer" else "Message Claude") },
-            leadingIcon = { AttachImageButton(enabled = !sendingImages, onClick = onAttachImages) },
+                leadingIcon = { AttachImageButton(enabled = !sendingImages, onPickPhotos = onPickPhotos, onTakePhoto = onTakePhoto) },
                 maxLines = 6,
                 shape = ComposerShape,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true),

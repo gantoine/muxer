@@ -9,6 +9,7 @@ import com.gantoine.muxer.protocol.AgentMessage
 import com.gantoine.muxer.protocol.AgentMessagesMessage
 import com.gantoine.muxer.protocol.Approval
 import com.gantoine.muxer.protocol.ApprovalsMessage
+import com.gantoine.muxer.protocol.ChatFiles
 import com.gantoine.muxer.protocol.ChatImageData
 import com.gantoine.muxer.protocol.ChatMessage
 import com.gantoine.muxer.protocol.ChatSessionMessage
@@ -429,6 +430,9 @@ class RelayConnection(
                 }
             }
         }).map { }
+
+    suspend fun chatFiles(query: String): Result<List<String>> =
+        requestAs<ChatFiles>("chat_files", buildJsonObject { put("query", query) }, "The computer sent no files.").map { it.files }
 
     suspend fun chatImage(image: String): Result<ChatImageData> =
         requestAs("chat_image", buildJsonObject { put("image", image) }, "The computer sent no image.")

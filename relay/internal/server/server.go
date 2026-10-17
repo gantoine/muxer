@@ -18,6 +18,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/devices"
+	"github.com/gantoine/muxer/relay/internal/files"
 	"github.com/gantoine/muxer/relay/internal/host"
 	"github.com/gantoine/muxer/relay/internal/notify"
 )
@@ -146,6 +147,7 @@ type Server struct {
 	workspaces *feed
 	keepAwake  *feed
 	organizing *workspaceExtras
+	files      *files.Index
 }
 
 func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, logger *slog.Logger) *Server {
@@ -162,6 +164,7 @@ func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, l
 	server := &Server{cmux: cmuxAPI, devices: store, hub: hub, options: options, logger: logger, ctx: ctx, cancel: cancel}
 	server.viewportGeneration.Store(time.Now().UnixMilli())
 	server.organizing = &workspaceExtras{}
+	server.files = files.NewIndex()
 	server.workspaces = newFeed(options.PollInterval.Workspaces, server.pollWorkspaces(&gitInfo{}))
 	server.keepAwake = newFeed(options.PollInterval.KeepAwake, server.pollKeepAwake)
 	return server

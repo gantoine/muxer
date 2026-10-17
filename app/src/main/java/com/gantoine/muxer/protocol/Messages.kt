@@ -251,6 +251,9 @@ data class ChatEntry(
 )
 
 @Serializable
+data class ChatFiles(val files: List<String> = emptyList())
+
+@Serializable
 data class ChatImageData(@SerialName("data_b64") val data: String = "", val format: String = "")
 
 @Serializable

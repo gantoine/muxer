@@ -49,6 +49,7 @@ import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -65,7 +66,9 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -492,4 +495,11 @@ fun StatusAvatar(icon: ImageVector, container: Color, onContainer: Color, dot: C
                 .background(dot, CircleShape),
         )
     }
+}
+
+@Composable
+fun rememberDraftField(draft: String): MutableState<TextFieldValue> {
+    val field = remember { mutableStateOf(TextFieldValue(draft, TextRange(draft.length))) }
+    if (field.value.text != draft) field.value = TextFieldValue(draft, TextRange(draft.length))
+    return field
 }

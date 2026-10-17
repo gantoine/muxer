@@ -478,6 +478,23 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			return err
 		})
 		return image, err
+	case "chat_files":
+		var request struct {
+			Query string `json:"query"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || len(request.Query) > maxFileQueryBytes {
+			return nil, invalid(fmt.Sprintf("chat_files needs a query of up to %d bytes.", maxFileQueryBytes))
+		}
+		var found []string
+		err := s.withTerminal(func(current *attachment) error {
+			var err error
+			found, err = s.chatFiles(ctx, current, request.Query)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"files": found}, nil
 	case "send_agent_message":
 		var request struct {
 			Text string `json:"text"`

@@ -1,7 +1,9 @@
 package com.gantoine.muxer.ui
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -77,10 +79,13 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.gantoine.muxer.MuxerApplication
+import com.gantoine.muxer.chat.FileMentions
 import com.gantoine.muxer.data.MacStore
+import com.gantoine.muxer.images.CameraCaptures
 import com.gantoine.muxer.images.ChatImages
 import com.gantoine.muxer.images.RemoteImages
 import com.gantoine.muxer.model.AgentMessaging
@@ -147,6 +152,7 @@ fun TerminalScreen(
     val questionOpen = approvals.any { it.isQuestion }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
 
     var fontSize by remember { mutableFloatStateOf(MacStore.DEFAULT_FONT_SIZE) }
@@ -165,6 +171,34 @@ fun TerminalScreen(
     var sendingImages by remember { mutableStateOf(false) }
     val pickImages = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(ChatImages.MAX_IMAGES)) { picked ->
         images = ChatImages.merge(images, picked)
+    }
+    var pendingPhoto by rememberSaveable { mutableStateOf<Uri?>(null) }
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val photo = pendingPhoto
+        pendingPhoto = null
+        if (saved && photo != null) images = ChatImages.merge(images, listOf(photo))
+    }
+    fun launchCamera() {
+        val photo = CameraCaptures.newPhoto(context)
+        pendingPhoto = photo
+        takePicture.launch(photo)
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            launchCamera()
+        } else {
+            scope.launch { snackbar.showSnackbar("Allow the camera to take a photo for Claude.") }
+        }
+    }
+    val mentionQuery = FileMentions.query(composerText)
+    var fileSuggestions by remember(surfaceId) { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(mentionQuery, chat?.sessionId) {
+        if (mentionQuery == null || chat == null) {
+            fileSuggestions = emptyList()
+            return@LaunchedEffect
+        }
+        delay(FILE_SEARCH_DELAY_MILLIS)
+        fileSuggestions = connection.chatFiles(mentionQuery).getOrDefault(emptyList())
     }
     val viewport = remember(surfaceId) { TerminalViewport() }
     val isLive by remember(viewport) { derivedStateOf { viewport.isLive } }
@@ -196,7 +230,6 @@ fun TerminalScreen(
         app.store.setFontSize(fontSize)
     }
 
-    val context = LocalContext.current
     val visible = remember(macId, surfaceId) { VisibleTerminal(macId, surfaceId) }
     var attachment by remember(connection, surfaceId) { mutableLongStateOf(NO_ATTACHMENT) }
     DisposableEffect(connection, workspaceId, surfaceId) {
@@ -276,6 +309,18 @@ fun TerminalScreen(
 
     fun attachImages() {
         pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
+
+    fun takePhoto() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchCamera()
+        } else {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    fun mentionFile(path: String) {
+        composerText = FileMentions.complete(composerText, path)
     }
 
     fun sendImages() {
@@ -408,8 +453,11 @@ fun TerminalScreen(
                     dictating = dictating,
                     images = images,
                     sendingImages = sendingImages,
-                    onAttachImages = ::attachImages,
+                    onPickPhotos = ::attachImages,
+                    onTakePhoto = ::takePhoto,
                     onRemoveImage = { images = images - it },
+                    fileSuggestions = fileSuggestions,
+                    onPickFile = ::mentionFile,
                     onStop = { connection.key("escape") },
                     onShowTerminal = { showChat = false },
                     chatImages = chatImages,
@@ -477,6 +525,7 @@ fun TerminalScreen(
                     AgentMessageReceipts(agentMessages, waitingOnYou)
                     if (composerOpen && !questionOpen) {
                         AttachedImages(images, onRemove = { images = images - it })
+                        FileSuggestions(fileSuggestions, onPick = ::mentionFile)
                         Composer(
                             text = composerText,
                             messagingAgent = messagingAgent,
@@ -484,7 +533,8 @@ fun TerminalScreen(
                             hasImages = images.isNotEmpty(),
                             sendingImages = sendingImages,
                             onTextChange = { composerText = it },
-                            onAttachImages = ::attachImages,
+                            onPickPhotos = ::attachImages,
+                            onTakePhoto = ::takePhoto,
                             onDictate = ::dictate,
                             dictating = dictating,
                             onSend = ::sendMessage,
@@ -584,6 +634,7 @@ private fun AgentPrompts(
 }
 
 private const val FIT_SETTLE_MS = 300L
+private const val FILE_SEARCH_DELAY_MILLIS = 150L
 private const val NO_ATTACHMENT = -1L
 
 private val KEYS = listOf(
@@ -651,21 +702,26 @@ private fun Composer(
     hasImages: Boolean,
     sendingImages: Boolean,
     onTextChange: (String) -> Unit,
-    onAttachImages: () -> Unit,
+    onPickPhotos: () -> Unit,
+    onTakePhoto: () -> Unit,
     onDictate: () -> Unit,
     dictating: Boolean,
     onSend: () -> Unit,
 ) {
+    var field by rememberDraftField(text)
     Row(
         Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         OutlinedTextField(
-            value = text,
-            onValueChange = onTextChange,
+            value = field,
+            onValueChange = {
+                field = it
+                onTextChange(it.text)
+            },
             placeholder = { Text(if (messagingAgent) "Send message after you answer" else "Message") },
             leadingIcon = if (canAttachImages) {
-                { AttachImageButton(enabled = !sendingImages, onClick = onAttachImages) }
+                { AttachImageButton(enabled = !sendingImages, onPickPhotos = onPickPhotos, onTakePhoto = onTakePhoto) }
             } else {
                 null
             },
