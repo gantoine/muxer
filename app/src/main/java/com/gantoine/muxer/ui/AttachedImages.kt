@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,10 +32,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.gantoine.muxer.images.ChatImages
 
 private val THUMBNAIL_SIZE = 64.dp
+private val SENT_IMAGE_SIZE = 160.dp
+private val SENT_IMAGES_SIZE = 72.dp
 
 @Composable
 fun AttachImageButton(enabled: Boolean, onClick: () -> Unit) {
@@ -75,6 +79,31 @@ private fun AttachedImage(uri: Uri, onRemove: () -> Unit) {
             IconButton(onClick = onRemove, modifier = Modifier.size(24.dp)) {
                 Icon(Icons.Filled.Close, contentDescription = "Remove this image", modifier = Modifier.size(16.dp))
             }
+        }
+    }
+}
+
+@Composable
+fun SentImages(paths: List<String>, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
+    val size = if (paths.size == 1) SENT_IMAGE_SIZE else SENT_IMAGES_SIZE
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        paths.forEach { path -> SentImage(path, size, loadImage) }
+    }
+}
+
+@Composable
+private fun SentImage(path: String, size: Dp, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
+    val edge = with(LocalDensity.current) { SENT_IMAGE_SIZE.roundToPx() }
+    val bitmap by produceState<Bitmap?>(null, path) { value = loadImage(path, edge) }
+    Box(
+        Modifier.size(size).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        contentAlignment = Alignment.Center,
+    ) {
+        val loaded = bitmap
+        if (loaded != null) {
+            Image(loaded.asImageBitmap(), contentDescription = "Image sent to Claude", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        } else {
+            Icon(Icons.Outlined.Image, contentDescription = "Image sent to Claude", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

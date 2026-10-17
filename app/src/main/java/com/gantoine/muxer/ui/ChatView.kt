@@ -1,5 +1,6 @@
 package com.gantoine.muxer.ui
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
@@ -98,6 +99,7 @@ fun ChatView(
     onRemoveImage: (Uri) -> Unit,
     onStop: () -> Unit,
     onShowTerminal: () -> Unit,
+    loadImage: suspend (path: String, edge: Int) -> Bitmap?,
     modifier: Modifier = Modifier,
     overlay: @Composable () -> Unit = {},
 ) {
@@ -127,7 +129,7 @@ fun ChatView(
                 ) {
                     if (thinking) item(key = "thinking") { ThinkingIndicator() }
                     items(chat.entries.asReversed(), key = { it.id }) { entry ->
-                        ChatItem(entry, working)
+                        ChatItem(entry, working, loadImage)
                     }
                 }
             }
@@ -164,9 +166,9 @@ fun ChatView(
 }
 
 @Composable
-private fun ChatItem(entry: ChatEntry, working: Boolean) {
+private fun ChatItem(entry: ChatEntry, working: Boolean, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
     when (entry.kind) {
-        "user" -> UserMessage(entry.text.orEmpty())
+        "user" -> UserMessage(entry.text.orEmpty(), entry.images, loadImage)
         "assistant" -> MarkdownText(entry.text.orEmpty())
         "tool" -> entry.tool?.let { ToolCall(it, working) }
         else -> Notice(entry.text.orEmpty())
@@ -203,16 +205,19 @@ private fun ThinkingIndicator() {
 }
 
 @Composable
-private fun UserMessage(text: String) {
-    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-        Surface(
-            shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.widthIn(max = 320.dp),
-        ) {
-            SelectionContainer {
-                Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
+private fun UserMessage(text: String, images: List<String>, loadImage: suspend (path: String, edge: Int) -> Bitmap?) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (images.isNotEmpty()) SentImages(images, loadImage)
+        if (text.isNotBlank()) {
+            Surface(
+                shape = RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.widthIn(max = 320.dp),
+            ) {
+                SelectionContainer {
+                    Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp))
+                }
             }
         }
     }

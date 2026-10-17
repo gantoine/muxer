@@ -14,11 +14,12 @@ const (
 )
 
 type Entry struct {
-	ID   string `json:"id"`
-	Kind string `json:"kind"`
-	Text string `json:"text,omitempty"`
-	Tool *Tool  `json:"tool,omitempty"`
-	Time string `json:"time,omitempty"`
+	ID     string   `json:"id"`
+	Kind   string   `json:"kind"`
+	Text   string   `json:"text,omitempty"`
+	Images []string `json:"images,omitempty"`
+	Tool   *Tool    `json:"tool,omitempty"`
+	Time   string   `json:"time,omitempty"`
 }
 
 type Tool struct {
@@ -134,10 +135,14 @@ func (t *Transcript) addText(entry line, position int, text string) []Entry {
 		kind = KindUser
 	}
 	text, kind = cleanText(text, kind)
-	if text == "" {
+	var images []string
+	if kind == KindUser {
+		images, text = splitAttachedImages(text)
+	}
+	if text == "" && len(images) == 0 {
 		return nil
 	}
-	return []Entry{t.upsert(Entry{ID: fmt.Sprintf("%s:%d", entry.UUID, position), Kind: kind, Text: text, Time: entry.Timestamp})}
+	return []Entry{t.upsert(Entry{ID: fmt.Sprintf("%s:%d", entry.UUID, position), Kind: kind, Text: text, Images: images, Time: entry.Timestamp})}
 }
 
 func (t *Transcript) upsert(entry Entry) Entry {
@@ -155,7 +160,25 @@ var (
 	commandArgs    = regexp.MustCompile(`(?s)<command-args>(.*?)</command-args>`)
 	localOutput    = regexp.MustCompile(`(?s)^\s*<local-command-(stdout|stderr)>(.*?)</local-command-(stdout|stderr)>\s*$`)
 	systemReminder = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
+	attachedImage  = regexp.MustCompile(`^(/\S*/clipboard-\d{4}-\d{2}-\d{2}-\d{6}-[0-9a-fA-F]{8}\.(?i:jpe?g|png|gif|webp))(?:\s+|$)`)
 )
+
+func IsAttachedImage(path string) bool {
+	match := attachedImage.FindStringSubmatch(path)
+	return match != nil && match[1] == path
+}
+
+func splitAttachedImages(text string) ([]string, string) {
+	var images []string
+	for {
+		match := attachedImage.FindStringSubmatch(text)
+		if match == nil {
+			return images, text
+		}
+		images = append(images, match[1])
+		text = text[len(match[0]):]
+	}
+}
 
 func cleanText(text, kind string) (string, string) {
 	text = strings.TrimSpace(systemReminder.ReplaceAllString(text, ""))

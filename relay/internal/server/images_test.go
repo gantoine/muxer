@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/coder/websocket/wsjson"
@@ -100,5 +102,37 @@ func TestComputerNameComesFromCmuxUnlessSetByHand(t *testing.T) {
 	relay.server.options.MacName = "Work laptop"
 	if got := name(); got != "Work laptop" {
 		t.Fatalf("name = %q, want the name given with --name", got)
+	}
+}
+
+func TestPhoneCanFetchImagesFromTheChat(t *testing.T) {
+	relay := startRelay(t)
+	ctx, conn := relay.connect(t)
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "hello", "id": "1"})
+	resultFor(t, ctx, conn, "1")
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "clipboard-2026-10-17-084701-6FFF738B.jpeg")
+	if err := os.WriteFile(path, []byte("jpeg bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "2", "path": path})
+	result := resultFor(t, ctx, conn, "2")
+	data, _ := result["data"].(map[string]any)
+	if result["ok"] != true || data["format"] != "jpeg" || data["data_b64"] != base64.StdEncoding.EncodeToString([]byte("jpeg bytes")) {
+		t.Fatalf("chat_image = %v", result)
+	}
+
+	secret := filepath.Join(dir, "notes.txt")
+	_ = os.WriteFile(secret, []byte("private"), 0o600)
+	for id, other := range map[string]string{
+		"3": secret,
+		"4": dir + "/x/../clipboard-2026-10-17-084701-6FFF738B.jpeg",
+		"5": filepath.Join(dir, "clipboard-2026-10-17-084701-00000000.jpeg"),
+	} {
+		_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": id, "path": other})
+		if result := resultFor(t, ctx, conn, id); result["ok"] == true {
+			t.Errorf("chat_image served %s: %v", other, result)
+		}
 	}
 }

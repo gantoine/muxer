@@ -461,6 +461,14 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 		return nil, s.withTerminal(func(current *attachment) error {
 			return s.sendImages(ctx, current, request.Text, request.Images)
 		})
+	case "chat_image":
+		var request struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || request.Path == "" {
+			return nil, invalid("chat_image needs a path.")
+		}
+		return readAttachedImage(request.Path)
 	case "send_agent_message":
 		var request struct {
 			Text string `json:"text"`

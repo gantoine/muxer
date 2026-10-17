@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 )
 
@@ -42,4 +46,24 @@ func (s *session) sendImages(ctx context.Context, current *attachment, text stri
 		}
 		return s.server.cmux.SendChat(ctx, sessionID, text, images)
 	})
+}
+
+func readAttachedImage(path string) (cmux.ChatImage, error) {
+	if filepath.Clean(path) != path || !claude.IsAttachedImage(path) {
+		return cmux.ChatImage{}, invalid("That isn't an image sent to Claude.")
+	}
+	gone := &requestError{Code: "not_found", Message: "That image is no longer on the computer."}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return cmux.ChatImage{}, gone
+	}
+	if info.Size() > maxImageBytes {
+		return cmux.ChatImage{}, invalid(fmt.Sprintf("Images can be up to %d MB.", maxImageBytes>>20))
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return cmux.ChatImage{}, gone
+	}
+	format := strings.ToLower(strings.TrimPrefix(filepath.Ext(path), "."))
+	return cmux.ChatImage{Data: base64.StdEncoding.EncodeToString(data), Format: format}, nil
 }

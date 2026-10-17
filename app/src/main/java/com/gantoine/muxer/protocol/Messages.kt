@@ -1,6 +1,7 @@
 package com.gantoine.muxer.protocol
 
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNamingStrategy
@@ -226,7 +227,17 @@ data class CreatedWorkspace(val workspaceId: String = "", val surfaceId: String 
 data class ChatTool(val name: String, val summary: String? = null, val status: String = "running", val output: String? = null)
 
 @Serializable
-data class ChatEntry(val id: String, val kind: String, val text: String? = null, val tool: ChatTool? = null, val time: String? = null)
+data class ChatEntry(
+    val id: String,
+    val kind: String,
+    val text: String? = null,
+    val images: List<String> = emptyList(),
+    val tool: ChatTool? = null,
+    val time: String? = null,
+)
+
+@Serializable
+data class ChatImageData(@SerialName("data_b64") val data: String = "", val format: String = "")
 
 @Serializable
 data class ChatSessionMessage(val surfaceId: String, val sessionId: String? = null)

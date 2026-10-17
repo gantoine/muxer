@@ -155,3 +155,25 @@ func TestTailStartsNearTheEndOfALongFile(t *testing.T) {
 		t.Fatalf("later reads continue from where the first stopped, got %q", lines)
 	}
 }
+
+func TestImagesSentFromThePhoneBecomeAttachments(t *testing.T) {
+	transcript := NewTranscript()
+	feedAll(transcript,
+		`{"type":"user","uuid":"one","message":{"role":"user","content":"/var/folders/xr/abc/T/clipboard-2026-10-17-084701-6FFF738B.jpeg Describe this image"}}`,
+		`{"type":"user","uuid":"two","message":{"role":"user","content":"/var/folders/xr/abc/T/clipboard-2026-10-17-084701-6FFF738B.jpeg /var/folders/xr/abc/T/clipboard-2026-10-17-084702-0A1B2C3D.png"}}`,
+		`{"type":"user","uuid":"plain","message":{"role":"user","content":"/tmp/screenshot.png looks off"}}`,
+	)
+	entries := transcript.Entries()
+	if len(entries) != 3 {
+		t.Fatalf("got %+v", entries)
+	}
+	if entries[0].Text != "Describe this image" || len(entries[0].Images) != 1 || entries[0].Images[0] != "/var/folders/xr/abc/T/clipboard-2026-10-17-084701-6FFF738B.jpeg" {
+		t.Errorf("image with text = %+v", entries[0])
+	}
+	if entries[1].Text != "" || len(entries[1].Images) != 2 || entries[1].Images[1] != "/var/folders/xr/abc/T/clipboard-2026-10-17-084702-0A1B2C3D.png" {
+		t.Errorf("images alone = %+v", entries[1])
+	}
+	if entries[2].Text != "/tmp/screenshot.png looks off" || entries[2].Images != nil {
+		t.Errorf("typed paths must stay text = %+v", entries[2])
+	}
+}

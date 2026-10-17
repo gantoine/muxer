@@ -9,6 +9,7 @@ import com.gantoine.muxer.protocol.AgentMessage
 import com.gantoine.muxer.protocol.AgentMessagesMessage
 import com.gantoine.muxer.protocol.Approval
 import com.gantoine.muxer.protocol.ApprovalsMessage
+import com.gantoine.muxer.protocol.ChatImageData
 import com.gantoine.muxer.protocol.ChatMessage
 import com.gantoine.muxer.protocol.ChatSessionMessage
 import com.gantoine.muxer.protocol.Checklist
@@ -428,6 +429,9 @@ class RelayConnection(
                 }
             }
         }).map { }
+
+    suspend fun chatImage(path: String): Result<ChatImageData> =
+        requestAs("chat_image", buildJsonObject { put("path", path) }, "The computer sent no image.")
 
     suspend fun history(): Result<HistoryResponse> =
         requestOr("history", buildJsonObject { put("lines", HISTORY_LINES) }, HistoryResponse())

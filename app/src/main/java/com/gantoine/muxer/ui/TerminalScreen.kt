@@ -410,6 +410,7 @@ fun TerminalScreen(
                     onRemoveImage = { images = images - it },
                     onStop = { connection.key("escape") },
                     onShowTerminal = { showChat = false },
+                    loadImage = { path, edge -> ChatImages.sentThumbnail(path, edge) { connection.chatImage(it).getOrNull()?.data } },
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     overlay = { AgentPrompts(retry, approvals, sendingApprovals, ::reply) },
                 )
