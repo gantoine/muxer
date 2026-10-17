@@ -180,7 +180,7 @@ func approvalFrom(item cmux.FeedItem, payload feedPayload) (Approval, bool) {
 	case feedKindQuestion:
 		approval.Kind = KindQuestion
 		for _, question := range item.Questions {
-			converted := Question{Header: question.Header, Prompt: question.Prompt, MultiSelect: question.MultiSelect}
+			converted := Question{Header: question.Header, Prompt: question.Prompt, MultiSelect: question.MultiSelect, Options: []Option{}}
 			for _, option := range question.Options {
 				converted.Options = append(converted.Options, Option{Label: option.Label, Description: option.Description})
 			}

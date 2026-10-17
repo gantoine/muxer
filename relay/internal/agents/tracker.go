@@ -52,6 +52,13 @@ var hooksWhenIdle = map[string]bool{
 	"SessionEnd":   true,
 }
 
+var EventCategories = []string{"agent", "terminal"}
+
+var programStatesWhileBusy = map[string]bool{
+	"working": true,
+	"blocked": true,
+}
+
 var ErrInvalidMessage = errors.New("a message needs 1 to 32768 bytes of text")
 
 type Retry struct {
@@ -128,9 +135,26 @@ func (t *Tracker) HandleEvent(_ context.Context, event cmux.Event) {
 		case hooksWhenIdle[hook]:
 			t.setBusy(surfaceID, false)
 		}
+	case event.Name == "program_status.changed":
+		if !programBusy(event.Payload) {
+			t.setBusy(surfaceID, false)
+		}
+	case event.Name == "surface.closed":
+		t.setBusy(surfaceID, false)
+		t.clearRetry(surfaceID)
 	case strings.HasPrefix(event.Name, "agent.message."):
 		t.notifyMessages(surfaceID)
 	}
+}
+
+func programBusy(payload json.RawMessage) bool {
+	var status struct {
+		Record *struct {
+			State string `json:"state"`
+		} `json:"record"`
+	}
+	_ = json.Unmarshal(payload, &status)
+	return status.Record != nil && programStatesWhileBusy[status.Record.State]
 }
 
 func (t *Tracker) Run(ctx context.Context) {

@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gantoine/muxer/relay/internal/agents"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/server"
 )
@@ -61,7 +63,7 @@ func named(name, workspaceID string) func(cmux.Event) bool {
 }
 
 func TestCmuxPublishesTheEventsTheRelayListensFor(t *testing.T) {
-	categories := append([]string{"notification", "agent"}, server.WorkspaceEventCategories...)
+	categories := slices.Concat([]string{"notification"}, agents.EventCategories, server.WorkspaceEventCategories)
 	log := subscribe(t, cmux.EventFilter{Categories: categories})
 
 	t.Run("workspaces", func(t *testing.T) {

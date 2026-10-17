@@ -20,6 +20,7 @@ import (
 const (
 	defaultCallTimeout = 15 * time.Second
 	maxIdleConns       = 4
+	textErrorCode      = "error"
 )
 
 type RPCError struct {
@@ -86,6 +87,11 @@ var readOnlyMethods = map[string]bool{
 	MethodVMStats:          true,
 }
 
+func answered(err error) bool {
+	var rpcErr *RPCError
+	return errors.As(err, &rpcErr) && rpcErr.Code != textErrorCode
+}
+
 func isConnectionError(err error) bool {
 	var rpcErr *RPCError
 	return !errors.As(err, &rpcErr) && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled)
@@ -148,7 +154,11 @@ func (c *Client) callOnce(ctx context.Context, method string, params any, result
 		raw, err = cn.roundTrip(ctx, c.nextID.Add(1), method, params)
 	}
 	if err != nil {
-		cn.close()
+		if answered(err) {
+			c.release(cn)
+		} else {
+			cn.close()
+		}
 		return err
 	}
 	c.release(cn)
@@ -342,7 +352,7 @@ func decodeResponse(line []byte) (json.RawMessage, error) {
 		if bytes.Contains(line, []byte("Access denied")) {
 			return nil, ErrAccessDenied
 		}
-		return nil, &RPCError{Code: "error", Message: strings.TrimSpace(string(line[len("ERROR:"):]))}
+		return nil, &RPCError{Code: textErrorCode, Message: strings.TrimSpace(string(line[len("ERROR:"):]))}
 	}
 	var response struct {
 		OK     bool            `json:"ok"`

@@ -154,3 +154,40 @@ func TestHooksTrackWhetherTheAgentIsMidTurn(t *testing.T) {
 		t.Fatal("a tool running after a blocked Stop means the turn went on")
 	}
 }
+
+func TestTheTerminalEndsATurnNoHookReports(t *testing.T) {
+	tracker := newTestTracker(&fakeSource{})
+	changes, unsubscribe := tracker.SubscribeActivity()
+	defer unsubscribe()
+	programStatus := func(payload map[string]any) cmux.Event {
+		return event("program_status.changed", "s1", payload)
+	}
+
+	tracker.HandleEvent(context.Background(), event("agent.hook.UserPromptSubmit", "s1", nil))
+	received(changes)
+	tracker.HandleEvent(context.Background(), programStatus(map[string]any{"event": "report", "record": map[string]any{"state": "working"}}))
+	tracker.HandleEvent(context.Background(), programStatus(map[string]any{"event": "report", "record": map[string]any{"state": "blocked"}}))
+	if len(tracker.Busy()) != 1 || received(changes) {
+		t.Fatal("working and waiting on a permission prompt are still mid-turn")
+	}
+	tracker.HandleEvent(context.Background(), programStatus(map[string]any{"event": "report", "record": map[string]any{"state": "idle"}}))
+	if len(tracker.Busy()) != 0 || !received(changes) {
+		t.Fatal("an interrupt with Esc reports idle without a Stop hook")
+	}
+	tracker.HandleEvent(context.Background(), programStatus(map[string]any{"event": "report", "record": map[string]any{"state": "working"}}))
+	if len(tracker.Busy()) != 0 {
+		t.Fatal("other programs report progress too, so only hooks start a turn")
+	}
+
+	tracker.HandleEvent(context.Background(), event("agent.hook.UserPromptSubmit", "s1", nil))
+	tracker.HandleEvent(context.Background(), programStatus(map[string]any{"event": "prompt_start", "record": nil}))
+	if len(tracker.Busy()) != 0 {
+		t.Fatal("the shell prompt coming back means a killed agent is gone")
+	}
+
+	tracker.HandleEvent(context.Background(), event("agent.hook.UserPromptSubmit", "s1", nil))
+	tracker.HandleEvent(context.Background(), event("surface.closed", "s1", nil))
+	if len(tracker.Busy()) != 0 {
+		t.Fatal("a closed terminal has no agent")
+	}
+}

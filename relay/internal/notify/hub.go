@@ -134,7 +134,7 @@ func (h *Hub) LatestSeq() int64 {
 func (h *Hub) Subscribe(afterSeq int64) (<-chan Notification, []Notification, func()) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	channel := make(chan Notification, 32)
+	channel := make(chan Notification, historySize)
 	h.subscribers[channel] = struct{}{}
 	var missed []Notification
 	for _, notification := range h.history {

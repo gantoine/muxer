@@ -49,29 +49,31 @@ func (s *Server) pollWorkspaces(git *gitInfo) func(ctx context.Context) ([]byte,
 }
 
 type workspaceExtras struct {
-	mu          sync.Mutex
-	fetchedAt   time.Time
-	stale       bool
-	status      map[string]cmux.LaneStatus
-	checklists  map[string]cmux.ChecklistProgress
-	remotes     map[string]cmux.RemoteState
-	groupColors map[string]string
+	mu                   sync.Mutex
+	fetchedAt            time.Time
+	invalidations        uint64
+	fetchedInvalidations uint64
+	status               map[string]cmux.LaneStatus
+	checklists           map[string]cmux.ChecklistProgress
+	remotes              map[string]cmux.RemoteState
+	groupColors          map[string]string
 }
 
 func (e *workspaceExtras) invalidate() {
 	e.mu.Lock()
-	e.stale = true
+	e.invalidations++
 	e.mu.Unlock()
 }
 
-func (e *workspaceExtras) due(interval time.Duration) bool {
+func (e *workspaceExtras) due(interval time.Duration) (bool, uint64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.stale || time.Since(e.fetchedAt) >= interval
+	return e.invalidations != e.fetchedInvalidations || time.Since(e.fetchedAt) >= interval, e.invalidations
 }
 
 func (e *workspaceExtras) refresh(ctx context.Context, s *Server, list cmux.WorkspaceList) {
-	if !e.due(s.options.PollInterval.Organizing) {
+	due, invalidations := e.due(s.options.PollInterval.Organizing)
+	if !due {
 		return
 	}
 	status := map[string]cmux.LaneStatus{}
@@ -106,7 +108,7 @@ func (e *workspaceExtras) refresh(ctx context.Context, s *Server, list cmux.Work
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.fetchedAt = time.Now()
-	e.stale = false
+	e.fetchedInvalidations = invalidations
 	e.status, e.checklists, e.remotes, e.groupColors = status, checklists, remotes, groupColors
 }
 

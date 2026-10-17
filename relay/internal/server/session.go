@@ -521,7 +521,11 @@ func (s *session) hello(ctx context.Context, notificationsAfter int64) (any, err
 		"unsupported":      s.server.unsupportedRequests(),
 	}
 	if s.server.hub != nil {
-		welcome["notification_seq"] = s.server.hub.LatestSeq()
+		latest := s.server.hub.LatestSeq()
+		welcome["notification_seq"] = latest
+		if notificationsAfter <= 0 {
+			notificationsAfter = latest
+		}
 	}
 	if !alreadyStarted {
 		go s.follow(s.server.workspaces)
@@ -730,6 +734,7 @@ func (s *session) pollTerminal(ctx context.Context, current *attachment) {
 			consecutiveErrors++
 			if cmux.IsNotFound(err) || consecutiveErrors >= maxConsecutiveErrors {
 				s.send(map[string]any{"type": "detached", "surface_id": current.surfaceID, "reason": err.Error()})
+				current.cancel()
 				return
 			}
 		} else {
