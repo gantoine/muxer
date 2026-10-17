@@ -8,9 +8,6 @@ Watch and drive your [cmux](https://github.com/manaflow-ai/cmux) terminals from 
 
 You don't need to sign in to cmux. Everything runs between your phone and your own computer, over a private network you control, with no cloud service in the middle. [Tailscale](https://tailscale.com) is the easiest way to set that up. Another VPN, a trusted local network, or a Cloudflare Tunnel behind Cloudflare Access also work.
 
-> [!IMPORTANT]
-> This is an independent project. It is not made, endorsed, or supported by Manaflow or the cmux team.
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="assets/screenshot-computers-light.png">
@@ -32,6 +29,9 @@ You don't need to sign in to cmux. Everything runs between your phone and your o
     <img src="assets/screenshot-terminal.png" width="22%" alt="A live shell terminal with git, test and muxer doctor output">
   </picture>
 </p>
+
+> [!IMPORTANT]
+> This is an independent project. It is not made, endorsed, or supported by Manaflow or the cmux team.
 
 ## How it works
 
