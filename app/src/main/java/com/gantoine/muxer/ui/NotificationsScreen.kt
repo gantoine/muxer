@@ -136,7 +136,7 @@ fun NotificationsScreen(
                                 onOpen = {
                                     val workspaceId = notification.workspaceId
                                     val surfaceId = notification.surfaceId
-                                    if (workspaceId != null && surfaceId != null) onOpenTerminal(workspaceId, surfaceId)
+                                    if (!workspaceId.isNullOrBlank() && !surfaceId.isNullOrBlank()) onOpenTerminal(workspaceId, surfaceId)
                                 },
                             )
                         }

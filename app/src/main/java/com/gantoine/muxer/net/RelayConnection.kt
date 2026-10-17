@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
@@ -222,7 +223,10 @@ class RelayConnection(
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
-            handleMessage(text)
+            try {
+                handleMessage(text)
+            } catch (_: SerializationException) {
+            }
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -314,7 +318,7 @@ class RelayConnection(
         if (message["ok"]?.jsonPrimitive?.booleanOrNull == true) {
             deferred.complete(Result.success(message["data"]))
         } else {
-            val error = message["error"]?.decode<RequestError>()
+            val error = message["error"]?.let { runCatching { it.decode<RequestError>() }.getOrNull() }
             deferred.complete(Result.failure(RelayException(error?.code ?: "error", error?.message ?: "The computer could not do that.")))
         }
     }

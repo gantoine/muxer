@@ -94,7 +94,6 @@ import com.gantoine.muxer.protocol.WorkspaceInfo
 import com.gantoine.muxer.terminal.parseHexColor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.add
 
 private sealed interface WorkspaceLine {
     val key: String
@@ -170,9 +169,13 @@ fun WorkspacesScreen(
         }
     }
 
+    fun openNewTerminal(workspace: WorkspaceInfo) {
+        run { createTerminal(workspace.id).onSuccess { if (it.isNotEmpty()) onOpenTerminal(workspace.id, it) } }
+    }
+
     fun open(workspace: WorkspaceInfo) {
         when (workspace.terminals.size) {
-            0 -> run { createTerminal(workspace.id).onSuccess { if (it.isNotEmpty()) onOpenTerminal(workspace.id, it) } }
+            0 -> openNewTerminal(workspace)
             1 -> onOpenTerminal(workspace.id, workspace.terminals.first().id)
             else -> dialog = WorkspaceDialog.PickTerminal(workspace)
         }
@@ -313,6 +316,7 @@ fun WorkspacesScreen(
         onDialog = { dialog = it },
         run = ::run,
         onOpen = ::open,
+        onNewTerminal = ::openNewTerminal,
         onOpenCreated = { created -> if (created.surfaceId.isNotEmpty()) onOpenTerminal(created.workspaceId, created.surfaceId) },
         onOpenTerminal = onOpenTerminal,
         onOpenChecklist = onOpenChecklist,

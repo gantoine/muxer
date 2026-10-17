@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -210,6 +211,8 @@ class ConnectionManager(
 
     @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
     private suspend fun writeSnapshots(macId: String, connection: RelayConnection) {
+        var lastWritten: SnapshotInputs? = null
+        var lastWrittenAt = 0L
         combine(
             connection.state,
             connection.workspaces,
@@ -221,7 +224,16 @@ class ConnectionManager(
         }
             .flatMapLatest { inputs -> repeatedWhileConnected(inputs) }
             .sample(SNAPSHOT_INTERVAL_MS)
+            .transformLatest { inputs ->
+                val written = lastWritten
+                if (written != null && written.copy(workspaces = inputs.workspaces) == inputs) {
+                    delay(WORKSPACE_SNAPSHOT_INTERVAL_MS - (System.currentTimeMillis() - lastWrittenAt))
+                }
+                emit(inputs)
+            }
             .collect { inputs ->
+                lastWritten = inputs
+                lastWrittenAt = System.currentTimeMillis()
                 val mac = store.find(macId) ?: return@collect
                 if (!inputs.connected) {
                     snapshots.markDisconnected(macId)
@@ -316,6 +328,7 @@ class ConnectionManager(
     private companion object {
         const val MAX_TRACKED_PER_TERMINAL = 10
         const val SNAPSHOT_INTERVAL_MS = 500L
+        const val WORKSPACE_SNAPSHOT_INTERVAL_MS = 5_000L
         const val SNAPSHOT_HEARTBEAT_MS = 60_000L
         const val SEPARATE_CONNECT_TIMEOUT_MS = 6_000L
         const val BACKGROUND_DETACH_MS = 30_000L

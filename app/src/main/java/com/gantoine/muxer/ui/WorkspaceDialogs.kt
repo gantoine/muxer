@@ -60,6 +60,7 @@ internal fun WorkspaceDialogs(
     onDialog: (WorkspaceDialog?) -> Unit,
     run: (suspend RelayConnection.() -> Result<*>) -> Unit,
     onOpen: (WorkspaceInfo) -> Unit,
+    onNewTerminal: (WorkspaceInfo) -> Unit,
     onOpenCreated: (CreatedWorkspace) -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
     onOpenChecklist: (workspaceId: String) -> Unit,
@@ -86,7 +87,7 @@ internal fun WorkspaceDialogs(
             SheetAction(Icons.AutoMirrored.Filled.OpenInNew, "Open") { dismiss(); onOpen(workspace) }
             SheetAction(Icons.Filled.Add, "New terminal") {
                 dismiss()
-                run { createTerminal(workspace.id) }
+                onNewTerminal(workspace)
             }
             if (canPinShortcuts && workspace.terminals.isNotEmpty()) {
                 SheetAction(Icons.AutoMirrored.Filled.AddToHomeScreen, "Add to Home screen") {

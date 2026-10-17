@@ -153,7 +153,7 @@ private fun PlanBody(approval: Approval, sending: Boolean, onReply: (ApprovalRep
         )
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Button(
-                onClick = { onReply(ApprovalReply.Decision(Approvals.PLAN_MANUAL, feedback.trim())) },
+                onClick = { onReply(ApprovalReply.Decision(Approvals.MODE_DENY, feedback.trim())) },
                 enabled = feedback.isNotBlank() && !sending,
             ) { Text("Send changes") }
             TextButton(onClick = { revising = false }, enabled = !sending) { Text("Cancel") }

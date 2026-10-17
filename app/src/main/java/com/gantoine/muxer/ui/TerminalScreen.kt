@@ -173,7 +173,14 @@ fun TerminalScreen(
     var showChat by remember(surfaceId) { mutableStateOf(false) }
     var terminalDialog by remember(surfaceId) { mutableStateOf<TerminalDialog?>(null) }
     var closing by remember(surfaceId) { mutableStateOf(false) }
-    LaunchedEffect(chat?.sessionId) { showChat = chat != null }
+    var chatSessionShown by remember(surfaceId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(chat?.sessionId) {
+        val sessionId = chat?.sessionId ?: return@LaunchedEffect
+        if (sessionId != chatSessionShown) {
+            chatSessionShown = sessionId
+            showChat = true
+        }
+    }
 
     LaunchedEffect(Unit) {
         val settings = app.store.settings.first()
@@ -232,7 +239,7 @@ fun TerminalScreen(
     }
 
     fun loadHistory() {
-        if (loadingHistory || history != null) return
+        if (loadingHistory || history?.lines?.isNotEmpty() == true) return
         loadingHistory = true
         scope.launch {
             connection.history()
@@ -295,14 +302,13 @@ fun TerminalScreen(
         val message = composerText.trim()
         if (message.isEmpty()) return
         composerText = ""
-        if (!messagingAgent) {
-            paste(message, submit = true)
-            return
-        }
+        val toAgent = messagingAgent
+        if (!toAgent && !viewport.isLive) goLive()
         scope.launch {
-            connection.deliverToAgent(message).onFailure { error ->
+            val result = if (toAgent) connection.deliverToAgent(message) else connection.paste(message, submit = true)
+            result.onFailure { error ->
                 if (composerText.isBlank()) composerText = message
-                snackbar.showSnackbar(error.message ?: "The message didn't reach the agent.")
+                snackbar.showSnackbar(error.message ?: if (toAgent) "The message didn't reach the agent." else "The computer did not accept that.")
             }
         }
     }
