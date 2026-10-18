@@ -93,14 +93,16 @@ jobs:
         run: |
           flags=()
           if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          without() { awk -v name="$1" '$0 == "<!-- " name " -->" { skip = 1 } !skip { print } $0 == "<!-- /" name " -->" { skip = 0 }'; }
+          body=$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json body --jq .body | tr -d '\r')
+          changelog=$(without update <<<"$body" | without virustotal | sed -e '/./,$!d')
+          virustotal=$(awk '/^<!-- virustotal -->$/,/^<!-- \/virustotal -->$/' <<<"$body")
           {
+            if [ -n "$changelog" ]; then printf '%s\n\n' "$changelog"; fi
             echo '<!-- update -->'
             packaging/release-notes/update-instructions.sh "$VERSION" "${flags[@]}"
             echo '<!-- /update -->'
-            echo
-            gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
-              | awk '/^<!-- update -->$/ { skip = 1 } !skip { print } /^<!-- \/update -->$/ { skip = 0 }' \
-              | sed -e '/./,$!d'
+            if [ -n "$virustotal" ]; then printf '\n%s\n' "$virustotal"; fi
           } > "$RUNNER_TEMP/notes.md"
           gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/notes.md"
 
@@ -166,6 +168,7 @@ jobs:
       - name: Add the results to the release notes
         run: |
           gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+            | tr -d '\r' \
             | awk '/^<!-- virustotal -->$/ { skip = 1 } !skip { print } /^<!-- \/virustotal -->$/ { skip = 0 }' \
             | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$RUNNER_TEMP/notes.md"
           {

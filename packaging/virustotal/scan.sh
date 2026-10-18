@@ -61,10 +61,13 @@ while (( pending > 0 )); do
   done
 done
 
-echo "### VirusTotal"
+echo '<details>'
+echo '<summary>VirusTotal scan</summary>'
 echo
 echo "Each download was scanned by [VirusTotal](https://www.virustotal.com) when this release was built."
 echo
 echo "| File | Malicious | Suspicious | Engines | Report |"
 echo "| --- | --- | --- | --- | --- |"
 printf '%s\n' "${rows[@]}"
+echo
+echo '</details>'
