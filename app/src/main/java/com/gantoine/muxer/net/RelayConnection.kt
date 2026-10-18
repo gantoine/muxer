@@ -8,6 +8,9 @@ import com.gantoine.muxer.protocol.AgentActivityMessage
 import com.gantoine.muxer.protocol.AgentMessage
 import com.gantoine.muxer.protocol.AgentMessagesMessage
 import com.gantoine.muxer.protocol.Approval
+import com.gantoine.muxer.protocol.AutomationLog
+import com.gantoine.muxer.protocol.AutomationLogsResponse
+import com.gantoine.muxer.protocol.AutomationsResponse
 import com.gantoine.muxer.protocol.ApprovalsMessage
 import com.gantoine.muxer.protocol.ChatFiles
 import com.gantoine.muxer.protocol.ChatImageData
@@ -490,6 +493,30 @@ class RelayConnection(
             },
             "The computer did not say what the VM is doing.",
         )
+
+    suspend fun automations(): Result<AutomationsResponse> = requestOr("automations", default = AutomationsResponse())
+
+    suspend fun setAutomationEnabled(ruleId: String, enabled: Boolean): Result<AutomationsResponse> =
+        requestOr(
+            "set_automation_enabled",
+            buildJsonObject {
+                put("rule_id", ruleId)
+                put("enabled", enabled)
+            },
+            AutomationsResponse(),
+        )
+
+    suspend fun automationLogs(ruleId: String? = null, limit: Int? = null): Result<List<AutomationLog>> =
+        requestOr(
+            "automation_logs",
+            buildJsonObject {
+                ruleId?.let { put("rule_id", it) }
+                limit?.let { put("limit", it) }
+            },
+            AutomationLogsResponse(),
+        ).map { it.logs }
+
+    suspend fun reloadAutomations(): Result<AutomationsResponse> = requestOr("reload_automations", default = AutomationsResponse())
 
     suspend fun notifications(): Result<List<MacNotification>> =
         requestOr("notifications", default = NotificationsResponse()).map { it.notifications }

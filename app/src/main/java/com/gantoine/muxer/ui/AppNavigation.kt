@@ -32,6 +32,8 @@ private object Routes {
     const val SESSIONS = "mac/{macId}/sessions"
     const val CHECKLIST = "mac/{macId}/workspace/{workspaceId}/checklist"
     const val METRICS = "mac/{macId}/metrics"
+    const val AUTOMATIONS = "mac/{macId}/automations"
+    const val AUTOMATION = "mac/{macId}/automations/{ruleId}"
     const val TERMINAL = "terminal/{macId}/{workspaceId}/{surfaceId}?message={message}&images={images}"
     const val SHARE = "share?text={text}&images={images}"
 
@@ -42,6 +44,8 @@ private object Routes {
     fun sessions(macId: String) = "mac/${Uri.encode(macId)}/sessions"
     fun checklist(macId: String, workspaceId: String) = "mac/${Uri.encode(macId)}/workspace/${Uri.encode(workspaceId)}/checklist"
     fun metrics(macId: String) = "mac/${Uri.encode(macId)}/metrics"
+    fun automations(macId: String) = "mac/${Uri.encode(macId)}/automations"
+    fun automation(macId: String, ruleId: String) = "mac/${Uri.encode(macId)}/automations/${Uri.encode(ruleId)}"
     fun terminal(macId: String, workspaceId: String, surfaceId: String, message: String = "", images: List<Uri> = emptyList()) =
         "terminal/${Uri.encode(macId)}/${Uri.encode(workspaceId)}/${Uri.encode(surfaceId)}?message=${Uri.encode(message)}&images=${encodeImages(images)}"
     fun share(text: String, images: List<Uri>) = "share?text=${Uri.encode(text)}&images=${encodeImages(images)}"
@@ -159,6 +163,29 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onBack = { navController.popBackStack() },
             )
         }
+        composable(Routes.AUTOMATIONS, arguments = listOf(macArgument)) { entry ->
+            val macId = entry.arg("macId")
+            AutomationsScreen(
+                app = app,
+                macId = macId,
+                onBack = { navController.popBackStack() },
+                onOpenRule = { navController.navigate(Routes.automation(macId, it)) },
+            )
+        }
+        composable(
+            Routes.AUTOMATION,
+            arguments = listOf(
+                macArgument,
+                navArgument("ruleId") { type = NavType.StringType },
+            ),
+        ) { entry ->
+            AutomationScreen(
+                app = app,
+                macId = entry.arg("macId"),
+                ruleId = entry.arg("ruleId"),
+                onBack = { navController.popBackStack() },
+            )
+        }
         composable(Routes.SETTINGS, arguments = listOf(macArgument)) { entry ->
             ComputerSettingsScreen(
                 app = app,
@@ -166,6 +193,7 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onBack = { navController.popBackStack() },
                 onOpenMetrics = { navController.navigate(Routes.metrics(it)) },
                 onOpenSessions = { navController.navigate(Routes.sessions(it)) },
+                onOpenAutomations = { navController.navigate(Routes.automations(it)) },
                 onRemoved = { navController.popBackStack(Routes.MACS, inclusive = false) },
             )
         }
