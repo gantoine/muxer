@@ -67,8 +67,14 @@ func (i *Index) paths(ctx context.Context, root string) ([]string, error) {
 		return nil, err
 	}
 	paths = withDirectories(paths)
+	now := i.now()
 	i.mu.Lock()
-	i.cached[root] = listing{at: i.now(), paths: paths}
+	for cachedRoot, entry := range i.cached {
+		if now.Sub(entry.at) >= cacheTTL {
+			delete(i.cached, cachedRoot)
+		}
+	}
+	i.cached[root] = listing{at: now, paths: paths}
 	i.mu.Unlock()
 	return paths, nil
 }

@@ -129,7 +129,11 @@ func (s *Store) Authenticate(token string) (Device, bool) {
 	defer s.mu.Unlock()
 	for index := range s.devices {
 		if subtle.ConstantTimeCompare([]byte(s.devices[index].TokenHash), []byte(hash)) == 1 {
-			s.devices[index].LastSeen = s.now()
+			seen := slices.Clone(s.devices)
+			seen[index].LastSeen = s.now()
+			if s.saveLocked(seen) != nil {
+				s.devices[index].LastSeen = seen[index].LastSeen
+			}
 			return s.devices[index], true
 		}
 	}

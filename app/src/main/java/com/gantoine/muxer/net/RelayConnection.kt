@@ -218,10 +218,12 @@ class RelayConnection(
 
     private inner class Listener(private val closed: CompletableDeferred<CloseReason>) : WebSocketListener() {
         @Volatile private var opened = false
+        @Volatile var welcomed = false
+        @Volatile var rejection: String? = null
 
         override fun onOpen(webSocket: WebSocket, response: Response) {
             opened = true
-            scope.launch { onOpened(webSocket) }
+            scope.launch { onOpened(webSocket, this@Listener) }
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -232,12 +234,12 @@ class RelayConnection(
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            val message = if (code == 1008) "This phone was removed on the computer. Pair it again." else "The computer closed the connection."
-            closed.complete(CloseReason(message, unauthorized = code == 1008, wasConnected = opened))
+            val message = if (code == 1008) "This phone was removed on the computer. Pair it again." else rejection ?: "The computer closed the connection."
+            closed.complete(CloseReason(message, unauthorized = code == 1008, wasConnected = welcomed))
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            closed.complete(CloseReason("The computer closed the connection.", wasConnected = opened))
+            closed.complete(CloseReason(rejection ?: "The computer closed the connection.", wasConnected = welcomed))
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -245,20 +247,23 @@ class RelayConnection(
                 closed.complete(CloseReason("This phone is no longer paired with the computer.", unauthorized = true))
                 return
             }
-            closed.complete(CloseReason(connectionFailureReason(t, opened), wasConnected = opened))
+            closed.complete(CloseReason(rejection ?: connectionFailureReason(t, opened), wasConnected = welcomed))
         }
     }
 
-    private suspend fun onOpened(webSocket: WebSocket) {
+    private suspend fun onOpened(webSocket: WebSocket, listener: Listener) {
         val hello = request("hello", buildJsonObject { put("notifications_after", notificationsAfter()) })
         if (socket !== webSocket) return
         hello.onSuccess { data ->
             val welcome = data?.decode<Welcome>() ?: return
+            listener.welcomed = true
             _state.value = ConnectionState.Connected(welcome)
             if (!suspended) attachment?.let { sendAttach(it) }
             onWelcome(macId, welcome)
         }.onFailure {
-            _state.value = ConnectionState.Disconnected(it.message ?: "The computer rejected the connection.")
+            val message = it.message ?: "The computer rejected the connection."
+            listener.rejection = message
+            _state.value = ConnectionState.Disconnected(message)
             webSocket.close(1000, "hello failed")
         }
     }
@@ -334,15 +339,14 @@ class RelayConnection(
         val id = nextId.incrementAndGet().toString()
         val deferred = CompletableDeferred<Result<JsonElement?>>()
         pending[id] = deferred
-        val sent = socket?.send(message(type, fields, id).toString()) ?: false
-        if (!sent) {
+        try {
+            val sent = socket?.send(message(type, fields, id).toString()) ?: false
+            if (!sent) return Result.failure(RelayException("disconnected", "Not connected to the computer."))
+            return withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
+                ?: Result.failure(RelayException("timeout", "The computer took too long to answer."))
+        } finally {
             pending.remove(id)
-            return Result.failure(RelayException("disconnected", "Not connected to the computer."))
         }
-        val result = withTimeoutOrNull(REQUEST_TIMEOUT_MS) { deferred.await() }
-        if (result != null) return result
-        pending.remove(id)
-        return Result.failure(RelayException("timeout", "The computer took too long to answer."))
     }
 
     fun send(type: String, fields: JsonObject = JsonObject(emptyMap())) {

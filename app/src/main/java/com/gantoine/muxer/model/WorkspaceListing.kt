@@ -114,15 +114,18 @@ object WorkspaceListing {
         val byId = workspaces.associateBy { it.id }
         val groupsById = groups.associateBy { it.id }
         val emitted = mutableSetOf<String>()
+        val placed = mutableSetOf<String>()
         fun shows(workspace: WorkspaceInfo) = passes(workspace, filter) && matches(workspace, query)
         return workspaces.mapNotNull { workspace ->
             val group = workspace.groupId?.let(groupsById::get)
-                ?: return@mapNotNull WorkspaceEntry.Single(workspace).takeIf { shows(workspace) }
+                ?: return@mapNotNull WorkspaceEntry.Single(workspace).takeIf { shows(workspace) && placed.add(workspace.id) }
             if (!emitted.add(group.id)) return@mapNotNull null
-            val anchor = group.anchorWorkspaceId?.let(byId::get)
+            val anchor = group.anchorWorkspaceId?.let(byId::get)?.takeIf { it.id !in placed }
             val members = (group.memberWorkspaceIds.mapNotNull(byId::get) + workspaces.filter { it.groupId == group.id })
                 .distinctBy { it.id }
-                .filter { it.id != anchor?.id }
+                .filter { it.id != anchor?.id && it.id !in placed }
+            anchor?.let { placed += it.id }
+            placed += members.map { it.id }
             val wholeGroup = (filter == WorkspaceFilter.All || filter == WorkspaceFilter.Pinned && group.isPinned) &&
                 (query.isBlank() || group.name.contains(query.trim(), ignoreCase = true))
             val shown = if (wholeGroup) members else members.filter(::shows)

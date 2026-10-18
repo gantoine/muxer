@@ -89,7 +89,13 @@ func (s *Server) recentSessions(ctx context.Context, request sessionQuery) ([]re
 	}
 	open := s.openSessions(ctx)
 	sessions := make([]recentSession, 0, len(found))
+	listed := map[[2]string]bool{}
 	for _, entry := range found {
+		key := [2]string{entry.Agent, entry.SessionID}
+		if listed[key] {
+			continue
+		}
+		listed[key] = true
 		session := recentSession{
 			Agent:        entry.Agent,
 			SessionID:    entry.SessionID,

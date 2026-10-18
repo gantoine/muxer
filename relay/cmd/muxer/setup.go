@@ -175,8 +175,8 @@ func runInstall(args []string) error {
 		return err
 	}
 	bootout(launchdLabel)
-	if output, err := exec.Command("launchctl", "bootstrap", launchdDomain(), p.plist).CombinedOutput(); err != nil {
-		return fmt.Errorf("launchctl bootstrap failed: %s", strings.TrimSpace(string(output)))
+	if err := bootstrap(p.plist); err != nil {
+		return err
 	}
 	fmt.Println("The relay now runs in the background and starts when you log in.")
 	fmt.Println("Log file:", p.log)
@@ -196,6 +196,25 @@ func launchdDomain() string {
 
 func bootout(label string) {
 	_ = exec.Command("launchctl", "bootout", launchdDomain()+"/"+label).Run()
+}
+
+const (
+	bootstrapAttempts = 10
+	bootstrapRetry    = time.Second
+)
+
+func bootstrap(plist string) error {
+	var output []byte
+	var err error
+	for attempt := 1; attempt <= bootstrapAttempts; attempt++ {
+		if output, err = exec.Command("launchctl", "bootstrap", launchdDomain(), plist).CombinedOutput(); err == nil {
+			return nil
+		}
+		if attempt < bootstrapAttempts {
+			time.Sleep(bootstrapRetry)
+		}
+	}
+	return fmt.Errorf("launchctl bootstrap failed: %s", strings.TrimSpace(string(output)))
 }
 
 func retireLegacyRelay(p paths) error {

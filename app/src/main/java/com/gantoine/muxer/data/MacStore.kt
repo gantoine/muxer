@@ -58,14 +58,17 @@ class MacStore(private val context: Context, scope: CoroutineScope, private val 
     fun token(mac: Mac): String? = cipher.decrypt(mac.encryptedToken)
 
     suspend fun add(id: String, name: String, url: String, token: String, notificationSeq: Long) {
-        update { macs ->
+        context.dataStore.edit { preferences ->
+            val macs = decodeMacs(preferences)
             val replaced = macs.filter { it.id == id || it.url == url }
             val background = replaced.any { it.backgroundNotifications }
             val completions = replaced.all { it.completionNotifications }
             val activity = replaced.all { it.showActivity }
-            macs - replaced.toSet() + Mac(id, Names.possessive(name), url, cipher.encrypt(token), background, completions, activity)
+            val added = Mac(id, Names.possessive(name), url, cipher.encrypt(token), background, completions, activity)
+            preferences[MACS] = json.encodeToString(serializer, macs - replaced.toSet() + added)
+            replaced.forEach { preferences.remove(seqKey(it.id)) }
+            preferences[seqKey(id)] = notificationSeq
         }
-        context.dataStore.edit { it[seqKey(id)] = notificationSeq }
     }
 
     suspend fun setBackgroundNotifications(id: String, enabled: Boolean) = updateMac(id) { copy(backgroundNotifications = enabled) }

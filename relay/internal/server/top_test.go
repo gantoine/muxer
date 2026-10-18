@@ -15,7 +15,7 @@ const topFixture = `{
   "memory_diagnostic": {"app": {"physical_footprint_bytes": 700000000}},
   "coding_agents": [{"id": "claude", "display_name": "Claude Code", "resources": {"cpu_percent": 5.6, "memory_bytes": 1287558976, "process_count": 4}}],
   "windows": [{"workspaces": [
-    {"id": "w1", "title": "Posthog", "resources": {"cpu_percent": 0, "memory_bytes": 10000000, "process_count": 3}, "panes": []},
+    {"id": "w1", "title": "Website", "resources": {"cpu_percent": 0, "memory_bytes": 10000000, "process_count": 3}, "panes": []},
     {"id": "w2", "title": "Muxer", "resources": {"cpu_percent": 24.2, "memory_bytes": 8500000000, "process_count": 9}, "panes": [
       {"surfaces": [{"processes": [
         {"pid": 52865, "name": "2.1.301", "path": "/Users/me/.local/share/claude/versions/2.1.301", "resources": {"cpu_percent": 8.8, "memory_bytes": 320000000}, "children": [

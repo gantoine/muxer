@@ -99,6 +99,7 @@ func (t *Tracker) Update(replay cmux.Replay) (Frame, bool) {
 		t.columns, t.rows = grid.Columns, grid.Rows
 		t.rowHashes = make([]uint64, grid.Rows)
 		t.foreground, t.background = grid.TerminalForeground, grid.TerminalBackground
+		t.styleIDs = map[styleKey]int{}
 		t.started = true
 	}
 	frame.Full = full
@@ -185,12 +186,6 @@ func (t *Tracker) allStyles(sourceStyles map[int]cmux.Style, alreadyIncluded []S
 		if !included[id] {
 			included[id] = true
 			styles = append(styles, wireStyle(id, style))
-		}
-	}
-	for key, id := range t.styleIDs {
-		if !included[id] {
-			included[id] = true
-			styles = append(styles, styleFromKey(id, key))
 		}
 	}
 	return styles
