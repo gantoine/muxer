@@ -30,6 +30,7 @@ const (
 	defaultHistoryLines  = 2000
 	maxHistoryLines      = 5000
 	maxQueuedMessages    = 64
+	maxParallelRequests  = 8
 	callTimeout          = 15 * time.Second
 	hostNameTimeout      = 2 * time.Second
 	maxImages            = 4
@@ -71,19 +72,37 @@ type session struct {
 	mu       sync.Mutex
 	attached *attachment
 	started  bool
+
+	parallelSlots chan struct{}
+	parallel      sync.WaitGroup
+}
+
+var parallelRequests = map[string]bool{
+	"history":         true,
+	"chat_image":      true,
+	"chat_files":      true,
+	"recent_sessions": true,
+	"resume_session":  true,
+	"notifications":   true,
+	"keep_awake":      true,
+	"top":             true,
+	"host_usage":      true,
+	"vms":             true,
 }
 
 func newSession(server *Server, conn *websocket.Conn, device devices.Device) *session {
 	return &session{
-		server:   server,
-		conn:     conn,
-		device:   device,
-		clientID: "muxer-" + device.ID,
+		server:        server,
+		conn:          conn,
+		device:        device,
+		clientID:      "muxer-" + device.ID,
+		parallelSlots: make(chan struct{}, maxParallelRequests),
 	}
 }
 
 func (s *session) run() {
 	s.ctx, s.cancel = context.WithCancel(s.server.ctx)
+	defer s.parallel.Wait()
 	defer s.cancel()
 	defer s.conn.CloseNow()
 	go s.keepAlive()
@@ -181,7 +200,26 @@ func (s *session) handle(raw json.RawMessage) {
 		s.reply("", nil, &requestError{Code: "invalid_message", Message: "Messages must be JSON objects with a type."})
 		return
 	}
-	data, err := s.dispatch(message.Type, raw)
+	current := s.current()
+	if !parallelRequests[message.Type] {
+		s.answer(message, raw, current)
+		return
+	}
+	select {
+	case s.parallelSlots <- struct{}{}:
+	case <-s.ctx.Done():
+		return
+	}
+	s.parallel.Add(1)
+	go func() {
+		defer s.parallel.Done()
+		defer func() { <-s.parallelSlots }()
+		s.answer(message, raw, current)
+	}()
+}
+
+func (s *session) answer(message envelope, raw json.RawMessage, current *attachment) {
+	data, err := s.dispatch(message.Type, raw, current)
 	if message.ID == "" && err == nil {
 		return
 	}
@@ -208,7 +246,7 @@ func (s *session) reply(id string, data any, err error) {
 	s.send(result)
 }
 
-func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
+func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment) (any, error) {
 	ctx, cancel := context.WithTimeout(s.ctx, callTimeout)
 	defer cancel()
 	switch kind {
@@ -235,7 +273,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 		}
 		s.attach(request.WorkspaceID, request.SurfaceID)
 		if request.Fit != nil {
-			return nil, s.fit(ctx, request.Fit.Columns, request.Fit.Rows)
+			return nil, s.fit(ctx, s.current(), request.Fit.Columns, request.Fit.Rows)
 		}
 		return nil, nil
 	case "detach":
@@ -252,7 +290,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			Text string `json:"text"`
 		}
 		_ = json.Unmarshal(raw, &request)
-		return nil, s.withTerminal(func(current *attachment) error {
+		return nil, s.withTerminal(current, func(current *attachment) error {
 			if err := validText("input", request.Text); err != nil {
 				return err
 			}
@@ -263,7 +301,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			Key string `json:"key"`
 		}
 		_ = json.Unmarshal(raw, &request)
-		return nil, s.withTerminal(func(current *attachment) error {
+		return nil, s.withTerminal(current, func(current *attachment) error {
 			if request.Key == "" || len(request.Key) > 64 {
 				return invalid("key needs a key name such as ctrl-c or up.")
 			}
@@ -275,7 +313,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			Submit bool   `json:"submit"`
 		}
 		_ = json.Unmarshal(raw, &request)
-		return nil, s.withTerminal(func(current *attachment) error {
+		return nil, s.withTerminal(current, func(current *attachment) error {
 			if err := validText("paste", request.Text); err != nil {
 				return err
 			}
@@ -286,7 +324,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			Lines int `json:"lines"`
 		}
 		_ = json.Unmarshal(raw, &request)
-		return nil, s.withTerminal(func(current *attachment) error {
+		return nil, s.withTerminal(current, func(current *attachment) error {
 			return s.server.cmux.Scroll(ctx, current.workspaceID, current.surfaceID, request.Lines)
 		})
 	case "history":
@@ -299,7 +337,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 		}
 		request.Lines = min(request.Lines, maxHistoryLines)
 		var history screen.History
-		err := s.withTerminal(func(current *attachment) error {
+		err := s.withTerminal(current, func(current *attachment) error {
 			replay, err := s.server.cmux.History(ctx, current.workspaceID, current.surfaceID, request.Lines)
 			if err != nil {
 				return err
@@ -317,7 +355,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			Rows    int `json:"rows"`
 		}
 		_ = json.Unmarshal(raw, &request)
-		return nil, s.fit(ctx, request.Columns, request.Rows)
+		return nil, s.fit(ctx, current, request.Columns, request.Rows)
 	case "unfit":
 		return nil, s.unfit(ctx)
 	case "create_workspace":
@@ -458,7 +496,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 		if len(request.Text) > maxInputBytes {
 			return nil, invalid(fmt.Sprintf("The message can be up to %d bytes.", maxInputBytes))
 		}
-		return nil, s.withTerminal(func(current *attachment) error {
+		return nil, s.withTerminal(current, func(current *attachment) error {
 			return s.sendImages(ctx, current, request.Text, request.Images)
 		})
 	case "chat_image":
@@ -472,7 +510,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			return readAttachedImage(request.Image)
 		}
 		var image cmux.ChatImage
-		err := s.withTerminal(func(current *attachment) error {
+		err := s.withTerminal(current, func(current *attachment) error {
 			var err error
 			image, err = s.transcriptImage(ctx, current, request.Image)
 			return err
@@ -486,7 +524,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			return nil, invalid(fmt.Sprintf("chat_files needs a query of up to %d bytes.", maxFileQueryBytes))
 		}
 		var found []string
-		err := s.withTerminal(func(current *attachment) error {
+		err := s.withTerminal(current, func(current *attachment) error {
 			var err error
 			found, err = s.chatFiles(ctx, current, request.Query)
 			return err
@@ -504,7 +542,7 @@ func (s *session) dispatch(kind string, raw json.RawMessage) (any, error) {
 			return nil, &requestError{Code: "unsupported", Message: "This relay can't message agents."}
 		}
 		var sent cmux.AgentMessage
-		err := s.withTerminal(func(current *attachment) error {
+		err := s.withTerminal(current, func(current *attachment) error {
 			var err error
 			sent, err = guarded(s.server, cmux.MethodAgentMessageSend, errAgentMessagesUnsupported, func() (cmux.AgentMessage, error) {
 				return s.server.options.Agents.Send(ctx, current.surfaceID, s.device.Name, request.Text)
@@ -659,8 +697,7 @@ func (s *session) current() *attachment {
 	return s.attached
 }
 
-func (s *session) withTerminal(action func(*attachment) error) error {
-	current := s.current()
+func (s *session) withTerminal(current *attachment, action func(*attachment) error) error {
 	if current == nil {
 		return &requestError{Code: "not_attached", Message: "Open a terminal first."}
 	}
@@ -707,11 +744,11 @@ func (s *session) detach() {
 	}
 }
 
-func (s *session) fit(ctx context.Context, columns, rows int) error {
+func (s *session) fit(ctx context.Context, current *attachment, columns, rows int) error {
 	if columns < 20 || columns > 300 || rows < 5 || rows > 120 {
 		return invalid("fit needs 20-300 columns and 5-120 rows.")
 	}
-	return s.withTerminal(func(current *attachment) error {
+	return s.withTerminal(current, func(current *attachment) error {
 		err := s.server.cmux.SetViewport(ctx, current.workspaceID, current.surfaceID, cmux.Viewport{
 			ClientID: s.clientID, Columns: columns, Rows: rows, Generation: s.server.nextViewportGeneration(),
 		})

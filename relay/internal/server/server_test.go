@@ -31,6 +31,7 @@ type fakeCmux struct {
 	keys            []string
 	viewports       []string
 	historyRequests []string
+	historyGate     chan struct{}
 	agent           cmux.AgentSession
 	agentErr        error
 	running         claude.SessionRef
@@ -284,7 +285,11 @@ func (f *fakeCmux) Replay(_ context.Context, workspaceID, surfaceID string) (cmu
 func (f *fakeCmux) History(_ context.Context, workspaceID, surfaceID string, maxRows int) (cmux.Replay, error) {
 	f.mu.Lock()
 	f.historyRequests = append(f.historyRequests, fmt.Sprintf("%s:%d", surfaceID, maxRows))
+	gate := f.historyGate
 	f.mu.Unlock()
+	if gate != nil {
+		<-gate
+	}
 	return cmux.Replay{WorkspaceID: workspaceID, SurfaceID: surfaceID, RenderGrid: &cmux.RenderGrid{
 		Columns: 80, Rows: 2, ScrollbackRows: 3, HistoryRows: 120,
 		Styles: []cmux.Style{
@@ -718,6 +723,34 @@ func TestHistoryReturnsScrollbackOldestFirstForTheAttachedTerminal(t *testing.T)
 	defer relay.cmux.mu.Unlock()
 	if len(relay.cmux.historyRequests) != 1 || relay.cmux.historyRequests[0] != fmt.Sprintf("t1:%d", maxHistoryLines) {
 		t.Fatalf("history must target the attached terminal and cap the size, got %v", relay.cmux.historyRequests)
+	}
+}
+
+func TestASlowRequestDoesNotHoldUpTypingAndKeepsItsTerminal(t *testing.T) {
+	relay := startRelay(t)
+	gate := make(chan struct{})
+	relay.cmux.mu.Lock()
+	relay.cmux.historyGate = gate
+	relay.cmux.mu.Unlock()
+	ctx, conn := relay.connect(t)
+
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "attach", "workspace_id": "w1", "surface_id": "t1"})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "history", "id": "h"})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "input", "id": "i", "text": "ls\r"})
+	if result := resultFor(t, ctx, conn, "i"); result["ok"] != true {
+		t.Fatalf("input must be answered while history is still loading: %v", result)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "attach", "id": "a", "workspace_id": "w1", "surface_id": "t2"})
+	resultFor(t, ctx, conn, "a")
+	close(gate)
+	if result := resultFor(t, ctx, conn, "h"); result["ok"] != true {
+		t.Fatalf("history failed: %v", result)
+	}
+
+	relay.cmux.mu.Lock()
+	defer relay.cmux.mu.Unlock()
+	if len(relay.cmux.historyRequests) != 1 || !strings.HasPrefix(relay.cmux.historyRequests[0], "t1:") {
+		t.Fatalf("history must read the terminal attached when it was asked for, got %v", relay.cmux.historyRequests)
 	}
 }
 
