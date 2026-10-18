@@ -85,6 +85,21 @@ func TestTrackerReportsClearedRowsAndResizes(t *testing.T) {
 	}
 }
 
+func TestTrackerReportsRowsThatScrolledIntoHistory(t *testing.T) {
+	tracker := NewTracker()
+	first, _ := tracker.Update(replay(80, 2, []cmux.Style{plain}, cmux.Span{Row: 0, Column: 0, StyleID: 0, Text: "$"}))
+	if first.HistoryRows != 0 {
+		t.Fatalf("a new terminal has no history, got %d", first.HistoryRows)
+	}
+
+	scrolled := replay(80, 2, []cmux.Style{plain}, cmux.Span{Row: 0, Column: 0, StyleID: 0, Text: "$"})
+	scrolled.RenderGrid.HistoryRows = 40
+	frame, changed := tracker.Update(scrolled)
+	if !changed || frame.HistoryRows != 40 {
+		t.Fatalf("rows scrolling off the top must produce a frame with the history size, got changed=%v %+v", changed, frame)
+	}
+}
+
 func TestTrackerUsesCellWidthForWideCharacters(t *testing.T) {
 	width := 2
 	frame, _ := NewTracker().Update(replay(80, 1, []cmux.Style{plain},

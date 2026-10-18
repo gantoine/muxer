@@ -59,9 +59,9 @@ The phone opens `GET /v1/ws` with `Authorization: Bearer <token>` and exchanges 
 | From phone | Purpose |
 | --- | --- |
 | `hello {notifications_after}` | Start the session. The answer carries the computer name, the cmux version and `unsupported`, the request types this relay understands but can't serve with this cmux (always a list, empty when everything works). Those requests answer with the error code `unsupported`. |
-| `attach {workspace_id, surface_id, fit?}` / `detach` / `resync` | Choose the terminal to stream. Attaching also marks that terminal's notifications read on the Mac. |
+| `attach {workspace_id, surface_id, fit?}` / `detach` / `resync` | Choose the terminal to stream. Attaching also marks that terminal's notifications read on the Mac. Each `screen` frame carries `history_rows`, the number of lines above the screen, so the phone knows when to fetch `history` again. |
 | `input {text}` / `key {key}` / `paste {text, submit}` / `scroll {lines}` | Send input to the attached terminal. |
-| `history {lines?}` | Get up to 5,000 lines above the attached terminal's screen, oldest first, with their own style table. The default is 2,000. |
+| `history {lines?}` | Get up to 5,000 lines above the attached terminal's screen, oldest first, with their own style table and `total`, the number of lines above the screen when they were read. The default is 2,000. |
 | `fit {columns, rows}` / `unfit` | Ask cmux to size the terminal for the phone. |
 | `create_workspace`, `rename_workspace`, `close_workspace`, `create_terminal` | Manage workspaces. |
 | `close_terminal {workspace_id, surface_id, force?}` / `rename_terminal {workspace_id, surface_id, title}` / `restart_terminal {workspace_id, surface_id}` | Close, rename (an empty title clears the name) or restart one terminal. Closing a workspace's only terminal fails with `last_terminal`. |

@@ -119,6 +119,7 @@ data class ScreenFrame(
     val foreground: String,
     val background: String,
     val altScreen: Boolean = false,
+    val historyRows: Int? = null,
     val cursor: CursorInfo? = null,
     val styles: List<CellStyle> = emptyList(),
     val changed: List<RowUpdate> = emptyList(),

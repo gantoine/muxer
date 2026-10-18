@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.SystemClock
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -108,6 +109,7 @@ import com.gantoine.muxer.terminal.TerminalHistory
 import com.gantoine.muxer.terminal.TerminalInputSink
 import com.gantoine.muxer.terminal.TerminalInputView
 import com.gantoine.muxer.terminal.TerminalKeys
+import com.gantoine.muxer.terminal.TerminalModel
 import com.gantoine.muxer.terminal.TerminalViewport
 import com.gantoine.muxer.terminal.fittingGrid
 import com.gantoine.muxer.terminal.rememberCellMetrics
@@ -213,6 +215,7 @@ fun TerminalScreen(
     val showSelectionBar by remember(viewport) { derivedStateOf { viewport.selection != null && !viewport.selecting } }
     var history by remember(surfaceId) { mutableStateOf<TerminalHistory?>(null) }
     var loadingHistory by remember(surfaceId) { mutableStateOf(false) }
+    var historyLoadedAt by remember(surfaceId) { mutableLongStateOf(0L) }
     var inputView by remember { mutableStateOf<TerminalInputView?>(null) }
     var showChat by remember(surfaceId) { mutableStateOf(false) }
     var terminalDialog by remember(surfaceId) { mutableStateOf<TerminalDialog?>(null) }
@@ -282,15 +285,19 @@ fun TerminalScreen(
     }
 
     fun loadHistory() {
-        if (loadingHistory || history?.lines?.isNotEmpty() == true) return
+        if (loadingHistory || !TerminalModel.historyOutdated(history, screen)) return
+        if (history != null && SystemClock.elapsedRealtime() - historyLoadedAt < HISTORY_RELOAD_MILLIS) return
         loadingHistory = true
         scope.launch {
             connection.history()
                 .onSuccess { response ->
+                    val loaded = TerminalHistory(response.styles.associateBy { it.id }, response.lines, response.total)
+                    if (!viewport.isLive) viewport.linesAboveLive += loaded.lines.size - (history?.lines?.size ?: 0)
                     viewport.selection = null
-                    history = TerminalHistory(response.styles.associateBy { it.id }, response.lines)
+                    history = loaded
                 }
                 .onFailure { snackbar.showSnackbar(it.message ?: "Could not load earlier output.") }
+            historyLoadedAt = SystemClock.elapsedRealtime()
             loadingHistory = false
         }
     }
@@ -672,6 +679,7 @@ private fun AgentPrompts(
 
 private const val FIT_SETTLE_MS = 300L
 private const val FILE_SEARCH_DELAY_MILLIS = 150L
+private const val HISTORY_RELOAD_MILLIS = 1_000L
 private const val NO_ATTACHMENT = -1L
 
 private val KEYS = listOf(
