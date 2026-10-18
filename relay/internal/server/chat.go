@@ -69,7 +69,17 @@ func (s *Server) agentSession(ctx context.Context, workspaceID, surfaceID string
 	if errors.Is(err, errMethodMissing) {
 		return cmux.AgentSession{}, nil
 	}
-	return agent, err
+	if err != nil || agent.SessionID == "" || s.agentRunning(ctx, workspaceID, surfaceID) {
+		return agent, err
+	}
+	return cmux.AgentSession{}, nil
+}
+
+func (s *Server) agentRunning(ctx context.Context, workspaceID, surfaceID string) bool {
+	state, err := guarded(s, cmux.MethodInputState, errMethodMissing, func() (cmux.InputState, error) {
+		return s.cmux.InputState(ctx, workspaceID, surfaceID)
+	})
+	return err != nil || state.Agent
 }
 
 func (s *Server) chatAgent(ctx context.Context, workspaceID, surfaceID string) (cmux.AgentSession, error) {

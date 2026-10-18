@@ -250,6 +250,13 @@ func (f *fakeCmux) setAgent(agent cmux.AgentSession) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.agent = agent
+	f.inputState.Agent = agent.SessionID != ""
+}
+
+func (f *fakeCmux) setAgentRunning(running bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.inputState.Agent = running
 }
 
 func (f *fakeCmux) Identify(context.Context) (cmux.Identity, error) {
@@ -817,6 +824,16 @@ func TestChatFollowsClaudeEnteringAndLeavingATerminal(t *testing.T) {
 	entries = update["entries"].([]any)
 	if update["reset"] != false || len(entries) != 1 || entries[0].(map[string]any)["text"] != "hi there" {
 		t.Fatalf("appended chat = %v", update)
+	}
+
+	relay.cmux.setAgentRunning(false)
+	if ended := readUntil(t, ctx, conn, "chat_session"); ended["session_id"] != nil {
+		t.Fatalf("a crashed Claude whose resume binding cmux keeps = %v", ended)
+	}
+
+	relay.cmux.setAgent(cmux.AgentSession{Kind: "claude", SessionID: "s1", Cwd: "/Users/me/app"})
+	if restarted := readUntil(t, ctx, conn, "chat_session"); restarted["session_id"] != "s1" {
+		t.Fatalf("resuming Claude = %v", restarted)
 	}
 
 	relay.cmux.setAgent(cmux.AgentSession{})
