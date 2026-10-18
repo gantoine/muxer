@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -102,9 +103,10 @@ var ErrAccessDenied = errors.New("cmux refused the connection; set socketControl
 type PasswordSource func() (string, error)
 
 type Client struct {
-	socketPath string
-	password   PasswordSource
-	nextID     atomic.Uint64
+	socketPaths func() []string
+	password    PasswordSource
+	nextID      atomic.Uint64
+	connected   atomic.Pointer[string]
 
 	mu           sync.Mutex
 	idle         []*conn
@@ -113,11 +115,18 @@ type Client struct {
 }
 
 func NewClient(socketPath string, password PasswordSource) *Client {
-	return &Client{socketPath: socketPath, password: password}
+	return &Client{socketPaths: func() []string { return []string{socketPath} }, password: password}
+}
+
+func NewDefaultClient(password PasswordSource) *Client {
+	return &Client{socketPaths: DefaultSocketPaths, password: password}
 }
 
 func (c *Client) SocketPath() string {
-	return c.socketPath
+	if path := c.connected.Load(); path != nil {
+		return *path
+	}
+	return c.socketPaths()[0]
 }
 
 func (c *Client) Call(ctx context.Context, method string, params any, result any) error {
@@ -204,11 +213,11 @@ func (c *Client) release(cn *conn) {
 }
 
 func (c *Client) dial(ctx context.Context) (*conn, error) {
-	var dialer net.Dialer
-	netConn, err := dialer.DialContext(ctx, "unix", c.socketPath)
+	netConn, path, err := dialFirst(ctx, c.socketPaths())
 	if err != nil {
-		return nil, fmt.Errorf("connect to cmux at %s (is cmux running?): %w", c.socketPath, err)
+		return nil, err
 	}
+	c.connected.Store(&path)
 	cn := &conn{netConn: netConn, reader: bufio.NewReaderSize(netConn, 1<<16)}
 	if err := c.authenticate(ctx, cn); err != nil {
 		cn.close()
@@ -398,21 +407,64 @@ func stateDir() (string, error) {
 	return filepath.Join(home, ".local", "state", "cmux"), err
 }
 
-func DefaultSocketPath() string {
-	if path := os.Getenv("CMUX_SOCKET_PATH"); path != "" {
-		return path
-	}
-	stateDir, _ := stateDir()
-	stable := filepath.Join(stateDir, "cmux.sock")
-	if _, err := os.Stat(stable); err == nil {
-		return stable
-	}
-	if marker, err := os.ReadFile(filepath.Join(stateDir, "last-socket-path")); err == nil {
-		if path := strings.TrimSpace(string(marker)); path != "" {
-			return path
+func dialFirst(ctx context.Context, paths []string) (net.Conn, string, error) {
+	var dialer net.Dialer
+	var firstErr error
+	for _, path := range paths {
+		netConn, err := dialer.DialContext(ctx, "unix", path)
+		if err == nil {
+			return netConn, path, nil
+		}
+		if firstErr == nil {
+			firstErr = fmt.Errorf("connect to cmux at %s (is cmux running?): %w", path, err)
+		}
+		if ctx.Err() != nil {
+			break
 		}
 	}
-	return stable
+	return nil, "", firstErr
+}
+
+func DefaultSocketPath() string {
+	paths := DefaultSocketPaths()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	netConn, path, err := dialFirst(ctx, paths)
+	if err != nil {
+		return paths[0]
+	}
+	netConn.Close()
+	return path
+}
+
+func DefaultSocketPaths() []string {
+	if path := os.Getenv("CMUX_SOCKET_PATH"); path != "" {
+		return []string{path}
+	}
+	stateDir, _ := stateDir()
+	home, _ := os.UserHomeDir()
+	markers := []string{
+		filepath.Join(stateDir, "last-socket-path"),
+		filepath.Join(home, "Library", "Application Support", "cmux", "last-socket-path"),
+		"/tmp/cmux-last-socket-path",
+	}
+	var paths []string
+	for _, marker := range markers {
+		if contents, err := os.ReadFile(marker); err == nil {
+			if path := strings.TrimSpace(string(contents)); path != "" && !slices.Contains(paths, path) {
+				paths = append(paths, path)
+			}
+		}
+	}
+	for _, path := range []string{
+		filepath.Join(stateDir, "cmux.sock"),
+		filepath.Join(stateDir, fmt.Sprintf("cmux-%d.sock", os.Getuid())),
+	} {
+		if !slices.Contains(paths, path) {
+			paths = append(paths, path)
+		}
+	}
+	return paths
 }
 
 func DefaultPasswordSource() PasswordSource {

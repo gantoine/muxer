@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 )
@@ -223,5 +225,55 @@ func TestClientRetriesRateLimitedCalls(t *testing.T) {
 	}
 	if got := fake.calls(); len(got) != 2 {
 		t.Fatalf("expected one retry, calls = %v", got)
+	}
+}
+
+func TestClientSkipsSocketsLeftBehindByACrashedCmux(t *testing.T) {
+	live := startFakeSocket(t, func(string, map[string]any, bool) string {
+		return `{"ok":true,"result":{"version":"0.65.1"}}`
+	})
+	orphan := filepath.Join(filepath.Dir(live.path), "cmux-501.sock")
+	listener, err := net.Listen("unix", orphan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener.(*net.UnixListener).SetUnlinkOnClose(false)
+	_ = listener.Close()
+
+	client := &Client{socketPaths: func() []string { return []string{orphan, live.path} }}
+	defer client.Close()
+	if _, err := client.Identify(context.Background()); err != nil {
+		t.Fatalf("the client must move on to the socket cmux is listening on: %v", err)
+	}
+	if client.SocketPath() != live.path {
+		t.Fatalf("socket path = %q, want %q", client.SocketPath(), live.path)
+	}
+}
+
+func TestDefaultSocketPathsTryWhatCmuxLastRecordedFirst(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CMUX_SOCKET_PATH", "")
+	state := filepath.Join(home, ".local", "state", "cmux")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stable := filepath.Join(state, "cmux.sock")
+	userScoped := filepath.Join(state, fmt.Sprintf("cmux-%d.sock", os.Getuid()))
+	if err := os.WriteFile(filepath.Join(state, "last-socket-path"), []byte(userScoped+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	paths := DefaultSocketPaths()
+	if !slices.Contains(paths, stable) || paths[0] != userScoped || slices.Index(paths, stable) < 1 {
+		t.Fatalf("the recorded path must come first and the stable path still be tried: %v", paths)
+	}
+	if len(paths) != len(slices.Compact(slices.Clone(paths))) {
+		t.Fatalf("paths must not repeat: %v", paths)
+	}
+
+	t.Setenv("CMUX_SOCKET_PATH", "/tmp/override.sock")
+	if paths := DefaultSocketPaths(); !slices.Equal(paths, []string{"/tmp/override.sock"}) {
+		t.Fatalf("CMUX_SOCKET_PATH must win: %v", paths)
 	}
 }

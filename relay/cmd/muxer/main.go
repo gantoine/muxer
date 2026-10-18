@@ -113,7 +113,7 @@ func runServe(args []string) error {
 		return err
 	}
 
-	client := cmux.NewClient(cmux.DefaultSocketPath(), cmux.DefaultPasswordSource())
+	client := cmux.NewDefaultClient(cmux.DefaultPasswordSource())
 	defer client.Close()
 	hub := notify.NewHub(client, logger)
 	approvalTracker := approvals.NewTracker(client, logger)
