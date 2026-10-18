@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.RemoteInput
 import com.gantoine.muxer.MuxerApplication
+import com.gantoine.muxer.lock.DeviceAuth
 import com.gantoine.muxer.model.ApprovalReply
 import kotlinx.coroutines.launch
 
@@ -25,10 +26,16 @@ class ApprovalActionReceiver : BroadcastReceiver() {
         val reply = intent.getStringExtra(EXTRA_MODE)?.let { ApprovalReply.Decision(it) }
             ?: answer?.let { ApprovalReply.Answers(listOf(it)) }
             ?: return
+        val deviceLocked = DeviceAuth.isDeviceLocked(context)
         val pending = goAsync()
         app.scope.launch {
             try {
-                app.answerApproval(target, reply).onFailure { error ->
+                val result = if (app.lock.blocksActions(deviceLocked)) {
+                    Result.failure(IllegalStateException("Unlock your phone to answer."))
+                } else {
+                    app.answerApproval(target, reply)
+                }
+                result.onFailure { error ->
                     val macName = app.store.find(target.macId)?.name ?: "your computer"
                     app.notifier.showApprovalFailed(macName, target, error.message ?: "The computer did not accept it.")
                 }

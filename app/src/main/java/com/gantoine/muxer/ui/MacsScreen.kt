@@ -30,6 +30,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -65,7 +66,13 @@ private sealed interface MacDialog {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun MacsScreen(app: MuxerApplication, onOpenMac: (Mac) -> Unit, onOpenSettings: (Mac) -> Unit, onAddMac: () -> Unit) {
+fun MacsScreen(
+    app: MuxerApplication,
+    onOpenMac: (Mac) -> Unit,
+    onOpenSettings: (Mac) -> Unit,
+    onAddMac: () -> Unit,
+    onOpenAppSettings: () -> Unit,
+) {
     val macs by app.store.macs.collectAsState(initial = null)
     val connections by app.connections.connectionsFlow.collectAsState()
     val scope = rememberCoroutineScope()
@@ -90,6 +97,9 @@ fun MacsScreen(app: MuxerApplication, onOpenMac: (Mac) -> Unit, onOpenSettings: 
         topBar = {
             CmuxTopBar(
                 title = "Devices",
+                actions = {
+                    IconButton(onClick = onOpenAppSettings) { Icon(Icons.Outlined.Settings, contentDescription = "Settings") }
+                },
             )
         },
         floatingActionButton = {

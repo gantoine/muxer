@@ -245,7 +245,7 @@ fun ComputerSettingsScreen(
 }
 
 @Composable
-private fun SettingsGroup(content: @Composable () -> Unit) {
+fun SettingsGroup(content: @Composable () -> Unit) {
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp),
@@ -253,7 +253,7 @@ private fun SettingsGroup(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingsRow(
+fun SettingsRow(
     index: Int,
     count: Int,
     headline: String,
@@ -289,7 +289,7 @@ private fun SettingsRow(
 }
 
 @Composable
-private fun SwitchSettingsRow(
+fun SwitchSettingsRow(
     index: Int,
     count: Int,
     headline: String,

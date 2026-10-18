@@ -3,7 +3,6 @@ package com.gantoine.muxer
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -11,24 +10,30 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
 import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.fragment.app.FragmentActivity
 import com.gantoine.muxer.notifications.Notifier
 import com.gantoine.muxer.notifications.conversationTarget
 import com.gantoine.muxer.share.ShareRouting
 import com.gantoine.muxer.ui.AppNavigation
 import com.gantoine.muxer.ui.CmuxTheme
 import com.gantoine.muxer.ui.LaunchTarget
+import com.gantoine.muxer.ui.LockGate
+import com.gantoine.muxer.ui.hideFromRecentsWhileLockIsOn
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private var launchTarget by mutableStateOf<LaunchTarget?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val app = application as MuxerApplication
+        hideFromRecentsWhileLockIsOn(app)
         if (savedInstanceState == null) launchTarget = targetFrom(intent)
         setContent {
             CmuxTheme {
-                AppNavigation(app, launchTarget, onLaunchTargetHandled = { launchTarget = null })
+                LockGate(app) {
+                    AppNavigation(app, launchTarget, onLaunchTargetHandled = { launchTarget = null })
+                }
             }
         }
     }

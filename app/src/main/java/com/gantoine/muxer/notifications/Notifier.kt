@@ -25,7 +25,11 @@ import com.gantoine.muxer.protocol.Approval
 import com.gantoine.muxer.protocol.RelayNotification
 import java.util.concurrent.ConcurrentHashMap
 
-class Notifier(private val context: Context, private val shortcuts: ConversationShortcuts) {
+class Notifier(
+    private val context: Context,
+    private val shortcuts: ConversationShortcuts,
+    private val requireUnlock: () -> Boolean,
+) {
     private data class Conversation(val target: ConversationTarget, val macName: String, val agentName: String, val channel: String) {
         val notificationId: Int get() = "conversation:${target.key}".hashCode()
     }
@@ -205,7 +209,8 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
 
     private fun approvalActions(macId: String, approval: Approval): List<NotificationCompat.Action> {
         val target = ApprovalTarget(macId, approval.id, approval.workspaceId, approval.surfaceId)
-        fun action(label: String, intent: PendingIntent) = NotificationCompat.Action.Builder(0, label, intent).build()
+        fun action(label: String, intent: PendingIntent) =
+            NotificationCompat.Action.Builder(0, label, intent).setAuthenticationRequired(requireUnlock()).build()
         val decisions = Approvals.decisions(approval)
         if (decisions.isNotEmpty()) {
             return decisions.map { action(it.label, ApprovalActionReceiver.intent(context, target, mode = it.mode)) }
@@ -227,6 +232,7 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
             .setShowsUserInterface(false)
             .setAllowGeneratedReplies(false)
+            .setAuthenticationRequired(requireUnlock())
             .build()
 
     private fun bubble(target: ConversationTarget, requestCode: Int): NotificationCompat.BubbleMetadata? {

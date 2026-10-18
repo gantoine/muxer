@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.RemoteInput
 import com.gantoine.muxer.MuxerApplication
+import com.gantoine.muxer.lock.DeviceAuth
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -16,9 +17,14 @@ class AgentReplyReceiver : BroadcastReceiver() {
         val agentName = intent.getStringExtra(EXTRA_AGENT_NAME) ?: "Agent"
         val text = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(KEY_TEXT)?.toString()?.trim()
         if (text.isNullOrEmpty()) return
+        val deviceLocked = DeviceAuth.isDeviceLocked(context)
         val pending = goAsync()
         val delivery = app.scope.launch {
-            val result = app.connections.sendAgentMessage(target, text)
+            val result = if (app.lock.blocksActions(deviceLocked)) {
+                Result.failure(IllegalStateException("Unlock your phone to send it."))
+            } else {
+                app.connections.sendAgentMessage(target, text)
+            }
             val macName = app.store.find(target.macId)?.name ?: "your computer"
             val failure = result.exceptionOrNull()?.let { it.message ?: "The computer did not accept it." }
             app.notifier.showReply(target, macName, agentName, text, failure)

@@ -25,6 +25,7 @@ sealed interface LaunchTarget {
 
 private object Routes {
     const val MACS = "macs"
+    const val APP_SETTINGS = "settings"
     const val PAIR = "pair?url={url}&code={code}"
     const val WORKSPACES = "mac/{macId}"
     const val SETTINGS = "mac/{macId}/settings"
@@ -88,7 +89,11 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onOpenMac = { navController.navigate(Routes.workspaces(it.id)) },
                 onOpenSettings = { navController.navigate(Routes.settings(it.id)) },
                 onAddMac = { navController.navigate(Routes.pair()) },
+                onOpenAppSettings = { navController.navigate(Routes.APP_SETTINGS) },
             )
+        }
+        composable(Routes.APP_SETTINGS) {
+            AppSettingsScreen(app = app, onBack = { navController.popBackStack() })
         }
         composable(
             Routes.PAIR,

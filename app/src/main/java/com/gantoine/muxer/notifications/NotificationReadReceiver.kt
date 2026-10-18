@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.gantoine.muxer.MuxerApplication
+import com.gantoine.muxer.lock.DeviceAuth
 import kotlinx.coroutines.launch
 
 class NotificationReadReceiver : BroadcastReceiver() {
@@ -14,9 +15,11 @@ class NotificationReadReceiver : BroadcastReceiver() {
         val notificationId = intent.getStringExtra(EXTRA_NOTIFICATION_ID)
         val surfaceId = intent.getStringExtra(Notifier.EXTRA_SURFACE_ID)
         if (notificationId == null && surfaceId == null) return
+        val deviceLocked = DeviceAuth.isDeviceLocked(context)
         val pending = goAsync()
         app.scope.launch {
             try {
+                if (app.lock.blocksActions(deviceLocked)) return@launch
                 app.connections.wakeAndAwait(macId, WAKE_MS)
                     ?.markNotificationsRead(notificationId = notificationId, surfaceId = surfaceId.takeIf { notificationId == null })
             } finally {

@@ -3,16 +3,18 @@ package com.gantoine.muxer
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import com.gantoine.muxer.notifications.ConversationTarget
 import com.gantoine.muxer.notifications.conversationTarget
 import com.gantoine.muxer.notifications.putTarget
 import com.gantoine.muxer.ui.CmuxTheme
+import com.gantoine.muxer.ui.LockGate
 import com.gantoine.muxer.ui.TerminalScreen
+import com.gantoine.muxer.ui.hideFromRecentsWhileLockIsOn
 
-class BubbleActivity : ComponentActivity() {
+class BubbleActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -22,9 +24,12 @@ class BubbleActivity : ComponentActivity() {
             finish()
             return
         }
+        hideFromRecentsWhileLockIsOn(app)
         setContent {
             CmuxTheme {
-                TerminalScreen(app, target.macId, target.workspaceId, target.surfaceId, onBack = ::finish)
+                LockGate(app) {
+                    TerminalScreen(app, target.macId, target.workspaceId, target.surfaceId, onBack = ::finish)
+                }
             }
         }
     }
