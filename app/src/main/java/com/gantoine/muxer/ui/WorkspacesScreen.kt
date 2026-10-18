@@ -673,7 +673,7 @@ private fun SearchDock(query: String, onQueryChange: (String) -> Unit, onCreate:
 }
 
 @Composable
-internal fun TerminalChoice(terminal: TerminalInfo, onClick: () -> Unit) {
+internal fun TerminalChoice(terminal: TerminalInfo, selected: Boolean = false, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(terminal.title.ifBlank { "Terminal" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
@@ -691,6 +691,11 @@ internal fun TerminalChoice(terminal: TerminalInfo, onClick: () -> Unit) {
                 if (terminal.isAgent) Icons.Filled.AutoAwesome else Icons.Filled.Terminal,
                 contentDescription = null,
             )
+        },
+        trailingContent = if (selected) {
+            { Icon(Icons.Filled.Check, contentDescription = "Current terminal") }
+        } else {
+            null
         },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier.combinedClickable(onClick = onClick),

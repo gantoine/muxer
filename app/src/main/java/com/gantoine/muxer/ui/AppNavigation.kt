@@ -179,14 +179,21 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 navArgument("images") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { entry ->
+            val macId = entry.arg("macId")
+            val workspaceId = entry.arg("workspaceId")
             TerminalScreen(
                 app = app,
-                macId = entry.arg("macId"),
-                workspaceId = entry.arg("workspaceId"),
+                macId = macId,
+                workspaceId = workspaceId,
                 surfaceId = entry.arg("surfaceId"),
                 initialMessage = entry.arg("message"),
                 initialImages = Routes.decodeImages(entry.arg("images")),
                 onBack = { navController.popBackStack() },
+                onSwitchTerminal = { surfaceId ->
+                    navController.navigate(Routes.terminal(macId, workspaceId, surfaceId)) {
+                        popUpTo(Routes.TERMINAL) { inclusive = true }
+                    }
+                },
             )
         }
         composable(

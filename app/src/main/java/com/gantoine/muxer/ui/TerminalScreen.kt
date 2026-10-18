@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.filled.Close
@@ -124,6 +125,7 @@ fun TerminalScreen(
     onBack: () -> Unit,
     initialMessage: String = "",
     initialImages: List<Uri> = emptyList(),
+    onSwitchTerminal: ((surfaceId: String) -> Unit)? = null,
 ) {
     val connections by app.connections.connectionsFlow.collectAsState()
     val connection = connections[macId]
@@ -148,6 +150,10 @@ fun TerminalScreen(
     val workspace = workspaces?.firstOrNull { it.id == workspaceId }
     val terminal = workspace?.terminals?.firstOrNull { it.id == surfaceId }
     val agentStatus = terminal?.let(WorkspaceListing::agentStatus)
+    val panes = if (onSwitchTerminal == null) emptyList() else workspace?.terminals.orEmpty()
+    val panesNeedingYou = panes.filter { pane ->
+        WorkspaceListing.agentStatus(pane) is AgentStatus.NeedsYou || allApprovals.orEmpty().any { it.surfaceId == pane.id }
+    }.map { it.id }.toSet()
     val agentName = AgentNames.display(terminal?.agentSource) ?: "the agent"
     val messagingAgent = AgentMessaging.shouldMessage(agentStatus, approvals.isNotEmpty(), inputState?.waitingOnHuman == true)
     val waitingOnYou = approvals.isNotEmpty() || agentStatus is AgentStatus.NeedsYou
@@ -405,29 +411,40 @@ fun TerminalScreen(
     Scaffold(
         topBar = {
             CmuxTopBar(
-                title = terminal?.title?.ifBlank { null } ?: workspace?.title ?: "Terminal",
+                title = {
+                    PaneSwitcherTitle(
+                        title = terminal?.title?.ifBlank { null } ?: workspace?.title ?: "Terminal",
+                        paneIds = panes.map { it.id },
+                        currentId = surfaceId,
+                        needsYou = panesNeedingYou,
+                        onOpenPanes = { terminalDialog = TerminalDialog.Panes },
+                        onSwitch = { onSwitchTerminal?.invoke(it) },
+                    )
+                },
                 onBack = onBack,
                 actions = {
-                    if (chat != null) {
-                        IconButton(onClick = { showChat = !showChat }) {
-                            if (showChat) {
-                                Icon(Icons.Filled.Terminal, contentDescription = "Show the terminal")
-                            } else {
-                                Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = "Show the chat")
+                    Row(horizontalArrangement = Arrangement.spacedBy((-8).dp)) {
+                        if (chat != null) {
+                            IconButton(onClick = { showChat = !showChat }) {
+                                if (showChat) {
+                                    Icon(Icons.Filled.Terminal, contentDescription = "Show the terminal")
+                                } else {
+                                    Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = "Show the chat")
+                                }
                             }
                         }
-                    }
-                    if (!showChat || chat == null) {
-                        IconToggleButton(checked = fitToPhone, onCheckedChange = {
-                            fitToPhone = it
-                            scope.launch { app.store.setFitToPhone(it) }
-                        }) {
-                            Icon(Icons.Filled.FitScreen, contentDescription = "Fit the terminal to this phone")
+                        if (!showChat || chat == null) {
+                            IconToggleButton(checked = fitToPhone, onCheckedChange = {
+                                fitToPhone = it
+                                scope.launch { app.store.setFitToPhone(it) }
+                            }) {
+                                Icon(Icons.Filled.FitScreen, contentDescription = "Fit the terminal to this phone")
+                            }
                         }
-                    }
-                    if (terminal != null) {
-                        IconButton(onClick = { terminalDialog = TerminalDialog.Actions }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "Terminal actions")
+                        if (terminal != null) {
+                            IconButton(onClick = { terminalDialog = TerminalDialog.Actions }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "Terminal actions")
+                            }
                         }
                     }
                 },
@@ -571,6 +588,22 @@ fun TerminalScreen(
     val terminalTitle = terminal?.title?.ifBlank { null } ?: "this terminal"
     when (val current = terminalDialog) {
         null -> Unit
+        TerminalDialog.Panes -> ActionSheet(onDismiss = { terminalDialog = null }) {
+            panes.forEach { pane ->
+                TerminalChoice(pane, selected = pane.id == surfaceId) {
+                    terminalDialog = null
+                    if (pane.id != surfaceId) onSwitchTerminal?.invoke(pane.id)
+                }
+            }
+            SheetAction(Icons.Filled.Add, "New terminal") {
+                terminalDialog = null
+                scope.launch {
+                    connection.createTerminal(workspaceId)
+                        .onSuccess { if (it.isNotEmpty()) onSwitchTerminal?.invoke(it) }
+                        .onFailure { snackbar.showSnackbar(it.message ?: "Could not open a new terminal.") }
+                }
+            }
+        }
         TerminalDialog.Actions -> ActionSheet(onDismiss = { terminalDialog = null }) {
             SheetAction(Icons.Filled.DriveFileRenameOutline, "Rename") { terminalDialog = TerminalDialog.Rename }
             SheetAction(Icons.Filled.RestartAlt, "Restart") { terminalDialog = TerminalDialog.Restart }
@@ -616,6 +649,7 @@ fun TerminalScreen(
 }
 
 private sealed interface TerminalDialog {
+    data object Panes : TerminalDialog
     data object Actions : TerminalDialog
     data object Rename : TerminalDialog
     data object Restart : TerminalDialog

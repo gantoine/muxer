@@ -378,9 +378,19 @@ fun CmuxTopBar(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    CmuxTopBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, onBack = onBack, actions = actions)
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun CmuxTopBar(
+    title: @Composable () -> Unit,
+    onBack: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
     val background = MaterialTheme.colorScheme.background
     CenterAlignedTopAppBar(
-        title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        title = title,
         navigationIcon = {
             if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
         },
