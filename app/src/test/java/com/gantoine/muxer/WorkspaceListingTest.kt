@@ -35,6 +35,20 @@ class WorkspaceListingTest {
     }
 
     @Test
+    fun agentSourcePrefersTheLastUsedAgentPane() {
+        val mixed = workspace.copy(
+            terminals = listOf(
+                TerminalInfo(id = "t1", title = "zsh"),
+                TerminalInfo(id = "t2", title = "claude", agentSource = "claude"),
+                TerminalInfo(id = "t3", title = "codex", agentSource = "codex", isFocused = true),
+            ),
+        )
+        assertEquals("codex", WorkspaceListing.agentSource(mixed))
+        assertEquals("claude", WorkspaceListing.agentSource(mixed.copy(terminals = mixed.terminals.take(2))))
+        assertNull(WorkspaceListing.agentSource(workspace))
+    }
+
+    @Test
     fun searchMatchesTerminalBranches() {
         val onBranch = workspace.copy(
             terminals = listOf(TerminalInfo(id = "t1", title = "zsh", gitBranch = "feat/approvals", gitDirty = true)),

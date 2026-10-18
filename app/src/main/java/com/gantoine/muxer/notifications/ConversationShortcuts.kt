@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.util.Log
+import androidx.annotation.DrawableRes
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
@@ -19,6 +20,7 @@ import com.gantoine.muxer.data.MacSnapshot
 import com.gantoine.muxer.model.isAgent
 import com.gantoine.muxer.protocol.WorkspaceInfo
 import com.gantoine.muxer.terminal.parseHexColor
+import com.gantoine.muxer.ui.AgentGlyphs
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -26,7 +28,7 @@ import kotlinx.coroutines.flow.debounce
 
 class ConversationShortcuts(private val context: Context) {
     private val known = ConcurrentHashMap<String, WorkspaceShortcut>()
-    private val icons = ConcurrentHashMap<Pair<Int, Boolean>, IconCompat>()
+    private val icons = ConcurrentHashMap<Pair<Int, Int>, IconCompat>()
     private var lastPlan: List<WorkspaceShortcut>? = null
     private var lastWorkspaceIds: Set<String>? = null
 
@@ -106,13 +108,12 @@ class ConversationShortcuts(private val context: Context) {
 
     private fun iconFor(shortcut: WorkspaceShortcut): IconCompat {
         val background = parseHexColor(shortcut.color)?.toArgb() ?: return appIcon()
-        val isAgent = shortcut.agentName != null
-        return icons.getOrPut(background to isAgent) { drawIcon(background, isAgent) ?: return appIcon() }
+        val glyph = AgentGlyphs.pane(shortcut.agentName != null, shortcut.agentName)
+        return icons.getOrPut(background to glyph) { drawIcon(background, glyph) ?: return appIcon() }
     }
 
-    private fun drawIcon(background: Int, isAgent: Boolean): IconCompat? {
-        val glyph = ContextCompat.getDrawable(context, if (isAgent) R.drawable.ic_workspace_agent else R.drawable.ic_workspace_terminal)
-            ?: return null
+    private fun drawIcon(background: Int, @DrawableRes glyphRes: Int): IconCompat? {
+        val glyph = ContextCompat.getDrawable(context, glyphRes) ?: return null
         val size = (ADAPTIVE_ICON_DP * context.resources.displayMetrics.density).toInt()
         val bitmap = createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)

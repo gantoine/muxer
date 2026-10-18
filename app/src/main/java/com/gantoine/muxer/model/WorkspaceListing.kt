@@ -146,6 +146,10 @@ object WorkspaceListing {
 
     fun isAgent(workspace: WorkspaceInfo): Boolean = workspace.terminals.any { it.isAgent }
 
+    fun agentSource(workspace: WorkspaceInfo): String? =
+        workspace.terminals.firstOrNull { it.isFocused && it.agentSource != null }?.agentSource
+            ?: workspace.terminals.firstNotNullOfOrNull { it.agentSource }
+
     fun needsAttention(text: String?): Boolean =
         text?.let { candidate -> attentionWords.any { candidate.contains(it, ignoreCase = true) } } ?: false
 

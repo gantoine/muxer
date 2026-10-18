@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
@@ -72,6 +71,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -529,7 +529,7 @@ private fun GroupTerminalsRow(
     ) {
         Box(Modifier.width(48.dp), contentAlignment = Alignment.Center) {
             Icon(
-                if (WorkspaceListing.isAgent(workspace)) Icons.Filled.AutoAwesome else Icons.Filled.Terminal,
+                painterResource(AgentGlyphs.pane(WorkspaceListing.isAgent(workspace), WorkspaceListing.agentSource(workspace))),
                 contentDescription = WorkspaceListing.agentStatus(workspace)?.label,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(24.dp),
@@ -591,7 +591,7 @@ fun WorkspaceTile(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            if (agent) Icons.Filled.AutoAwesome else Icons.Filled.Terminal,
+            painterResource(AgentGlyphs.pane(agent, WorkspaceListing.agentSource(workspace))),
             contentDescription = null,
             tint = Color.White,
             modifier = Modifier.size(size / 2).graphicsLayer {
@@ -688,7 +688,7 @@ internal fun TerminalChoice(terminal: TerminalInfo, selected: Boolean = false, o
         },
         leadingContent = {
             Icon(
-                if (terminal.isAgent) Icons.Filled.AutoAwesome else Icons.Filled.Terminal,
+                painterResource(AgentGlyphs.pane(terminal.isAgent, terminal.agentSource)),
                 contentDescription = null,
             )
         },
