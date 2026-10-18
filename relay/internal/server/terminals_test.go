@@ -46,6 +46,18 @@ func TestPhoneCanCloseRenameAndRestartATerminal(t *testing.T) {
 	}
 }
 
+func TestCreatingATerminalAnswersWithItsSurfaceSoThePhoneCanOpenIt(t *testing.T) {
+	relay := startRelay(t)
+	ctx, conn := relay.connect(t)
+
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "create_terminal", "id": "1", "workspace_id": "w1"})
+	result := resultFor(t, ctx, conn, "1")
+	data, _ := result["data"].(map[string]any)
+	if result["ok"] != true || data["surface_id"] != "t3" {
+		t.Fatalf("create_terminal must answer with the new surface_id: %v", result)
+	}
+}
+
 func TestClosingTheLastTerminalExplainsWhatToDoInstead(t *testing.T) {
 	relay := startRelay(t)
 	relay.cmux.closeErr = &cmux.RPCError{Code: "invalid_state", Message: "Cannot close the last surface"}
