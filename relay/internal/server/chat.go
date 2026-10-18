@@ -5,21 +5,28 @@ import (
 	"errors"
 	"time"
 
+	"github.com/gantoine/muxer/relay/internal/chat"
 	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
+	"github.com/gantoine/muxer/relay/internal/codex"
 )
 
 const (
 	agentKindClaude         = "claude"
+	agentKindCodex          = "codex"
 	maxInitialEntries       = 300
 	initialTranscriptWindow = 4 << 20
 )
 
+type transcript interface {
+	Feed(raw []byte) []chat.Entry
+	Entries() []chat.Entry
+}
+
 type chatWatch struct {
-	sessionID  string
-	cwd        string
-	transcript *claude.Transcript
-	tail       *claude.Tail
+	agent      cmux.AgentSession
+	transcript transcript
+	tail       *chat.Tail
 	sent       bool
 	sentEmpty  bool
 }
@@ -29,18 +36,18 @@ func (s *session) watchChat(ctx context.Context, current *attachment) {
 	announced := false
 	for {
 		callCtx, cancel := context.WithTimeout(ctx, callTimeout)
-		sessionID, cwd, err := s.server.claudeSession(callCtx, current.workspaceID, current.surfaceID)
+		agent, err := s.server.chatAgent(callCtx, current.workspaceID, current.surfaceID)
 		cancel()
 		if ctx.Err() != nil {
 			return
 		}
 		if err == nil {
-			if !announced || sessionID != watch.sessionID {
+			if !announced || agent.SessionID != watch.agent.SessionID {
 				announced = true
-				watch = chatWatch{sessionID: sessionID, cwd: cwd}
-				s.sendChatSession(current, sessionID)
+				watch = chatWatch{agent: agent}
+				s.sendChatSession(current, agent.SessionID)
 			}
-			if sessionID != "" {
+			if agent.SessionID != "" {
 				s.followTranscript(current, &watch)
 			}
 		}
@@ -65,37 +72,51 @@ func (s *Server) agentSession(ctx context.Context, workspaceID, surfaceID string
 	return agent, err
 }
 
-func (s *Server) claudeSession(ctx context.Context, workspaceID, surfaceID string) (sessionID, cwd string, err error) {
+func (s *Server) chatAgent(ctx context.Context, workspaceID, surfaceID string) (cmux.AgentSession, error) {
 	agent, err := s.agentSession(ctx, workspaceID, surfaceID)
-	if err != nil || agent.Kind != agentKindClaude {
-		return "", "", err
+	if err != nil || (agent.Kind != agentKindClaude && agent.Kind != agentKindCodex) {
+		return cmux.AgentSession{}, err
 	}
-	return agent.SessionID, agent.Cwd, nil
+	return agent, nil
+}
+
+func (s *Server) transcriptPath(agent cmux.AgentSession) (string, bool) {
+	if agent.Kind == agentKindCodex {
+		return codex.FindRollout(s.options.CodexHome, agent.SessionID)
+	}
+	return claude.FindTranscript(s.options.ClaudeConfigDir, agent.Cwd, agent.SessionID)
+}
+
+func newTranscript(kind string) transcript {
+	if kind == agentKindCodex {
+		return codex.NewTranscript()
+	}
+	return claude.NewTranscript()
 }
 
 func (s *session) followTranscript(current *attachment, watch *chatWatch) {
 	if watch.tail == nil {
-		path, ok := claude.FindTranscript(s.server.options.ClaudeConfigDir, watch.cwd, watch.sessionID)
+		path, ok := s.server.transcriptPath(watch.agent)
 		if !ok {
 			if !watch.sentEmpty {
 				watch.sentEmpty = true
-				s.sendChat(current, watch.sessionID, nil, true)
+				s.sendChat(current, watch.agent.SessionID, nil, true)
 			}
 			return
 		}
-		watch.tail = claude.NewTail(path, initialTranscriptWindow)
-		watch.transcript = claude.NewTranscript()
+		watch.tail = chat.NewTail(path, initialTranscriptWindow)
+		watch.transcript = newTranscript(watch.agent.Kind)
 	}
 	lines, restarted, err := watch.tail.Lines()
 	if err != nil {
-		s.server.logger.Warn("could not read the Claude transcript", "error", err)
+		s.server.logger.Warn("could not read the agent transcript", "agent", watch.agent.Kind, "error", err)
 		return
 	}
 	if restarted {
-		watch.transcript = claude.NewTranscript()
+		watch.transcript = newTranscript(watch.agent.Kind)
 		watch.sent = false
 	}
-	var changed []claude.Entry
+	var changed []chat.Entry
 	for _, line := range lines {
 		changed = append(changed, watch.transcript.Feed(line)...)
 	}
@@ -105,11 +126,11 @@ func (s *session) followTranscript(current *attachment, watch *chatWatch) {
 			entries = entries[len(entries)-maxInitialEntries:]
 		}
 		watch.sent = true
-		s.sendChat(current, watch.sessionID, entries, true)
+		s.sendChat(current, watch.agent.SessionID, entries, true)
 		return
 	}
 	if len(changed) > 0 {
-		s.sendChat(current, watch.sessionID, changed, false)
+		s.sendChat(current, watch.agent.SessionID, changed, false)
 	}
 }
 
@@ -121,9 +142,9 @@ func (s *session) sendChatSession(current *attachment, sessionID string) {
 	s.send(map[string]any{"type": "chat_session", "surface_id": current.surfaceID, "session_id": id})
 }
 
-func (s *session) sendChat(current *attachment, sessionID string, entries []claude.Entry, reset bool) {
+func (s *session) sendChat(current *attachment, sessionID string, entries []chat.Entry, reset bool) {
 	if entries == nil {
-		entries = []claude.Entry{}
+		entries = []chat.Entry{}
 	}
 	s.send(map[string]any{
 		"type":       "chat",

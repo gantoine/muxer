@@ -12,7 +12,7 @@ object AgentMessaging {
         messages.filter { it.state != AgentMessage.READ }.sortedBy { it.createdAt }
 
     fun statusLine(message: AgentMessage, waitingOnYou: Boolean): String = when (message.state) {
-        AgentMessage.QUEUED -> if (waitingOnYou) "Claude gets this after you answer" else "Waiting for the agent to pick it up"
+        AgentMessage.QUEUED -> if (waitingOnYou) "The agent gets this after you answer" else "Waiting for the agent to pick it up"
         AgentMessage.DELIVERED -> "The agent has it"
         AgentMessage.FAILED -> "Not delivered: ${failureText(message.failureReason)}"
         else -> "Read"

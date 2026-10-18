@@ -476,6 +476,7 @@ type testRelay struct {
 	store     *devices.Store
 	server    *Server
 	claudeDir string
+	codexDir  string
 }
 
 func startRelay(t *testing.T) testRelay {
@@ -490,16 +491,17 @@ func startRelay(t *testing.T) testRelay {
 	intervals.Fast = 10 * time.Millisecond
 	intervals.Chat = 10 * time.Millisecond
 	claudeDir := t.TempDir()
+	codexDir := t.TempDir()
 	relay := New(fake, store, nil, Options{
 		MacName: "Test Mac", RelayVersion: "test", PollInterval: intervals, ClaudeConfigDir: claudeDir,
-		ClaudeSession: fake.runningClaude,
+		ClaudeSession: fake.runningClaude, CodexHome: codexDir,
 		HostUsage: func(context.Context) (host.Usage, error) {
 			return host.Usage{CPUPercent: 23.5, MemoryUsedBytes: 30 << 30, MemoryTotalBytes: 48 << 30}, nil
 		},
 	}, logger)
 	server := httptest.NewServer(relay.Handler())
 	t.Cleanup(server.Close)
-	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir}
+	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir}
 }
 
 func (r testRelay) pair(t *testing.T) string {
@@ -792,6 +794,44 @@ func TestChatFollowsClaudeEnteringAndLeavingATerminal(t *testing.T) {
 	relay.cmux.setRunning(claude.SessionRef{SessionID: "s1", Cwd: "/Users/me/app"})
 	if found := readUntil(t, ctx, conn, "chat_session"); found["session_id"] != "s1" {
 		t.Fatalf("a Claude session cmux does not track must still be found: %v", found)
+	}
+}
+
+func TestChatFollowsACodexSession(t *testing.T) {
+	relay := startRelay(t)
+	ctx, conn := relay.connect(t)
+
+	rollout := filepath.Join(relay.codexDir, "sessions", "2026", "10", "17", "rollout-2026-10-17T20-12-45-thread-1.jsonl")
+	if err := os.MkdirAll(filepath.Dir(rollout), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first := `{"timestamp":"T1","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","id":"u1","content":[{"type":"text","text":"hello"}]}}}`
+	if err := os.WriteFile(rollout, []byte(first+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	relay.cmux.setAgent(cmux.AgentSession{Kind: "codex", SessionID: "thread-1", Cwd: "/Users/me/app"})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "attach", "workspace_id": "w1", "surface_id": "t1"})
+	if started := readUntil(t, ctx, conn, "chat_session"); started["session_id"] != "thread-1" {
+		t.Fatalf("entering Codex = %v", started)
+	}
+	chat := readUntil(t, ctx, conn, "chat")
+	entries := chat["entries"].([]any)
+	if chat["reset"] != true || len(entries) != 1 || entries[0].(map[string]any)["text"] != "hello" {
+		t.Fatalf("first chat = %v", chat)
+	}
+
+	file, err := os.OpenFile(rollout, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.WriteString(`{"timestamp":"T2","type":"event_msg","payload":{"type":"item_completed","item":{"type":"CommandExecution","id":"c1","command":["/bin/zsh","-lc","ls"],"status":"completed","aggregated_output":"a.txt","exit_code":0}}}` + "\n")
+	file.Close()
+	update := readUntil(t, ctx, conn, "chat")
+	entries = update["entries"].([]any)
+	tool, _ := entries[0].(map[string]any)["tool"].(map[string]any)
+	if update["reset"] != false || len(entries) != 1 || tool["name"] != "Shell" || tool["summary"] != "ls" {
+		t.Fatalf("appended chat = %v", update)
 	}
 }
 

@@ -102,6 +102,7 @@ private val TimeRevealWidth = 76.dp
 @Composable
 fun ChatView(
     chat: ChatState,
+    agentName: String,
     status: AgentStatus?,
     midTurn: Boolean,
     answeringHere: Boolean,
@@ -152,7 +153,7 @@ fun ChatView(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 !chat.loaded -> FullWidthMessage("Loading the conversation…")
-                chat.entries.isEmpty() && !thinking -> FullWidthMessage("Send a message to start talking to Claude.")
+                chat.entries.isEmpty() && !thinking -> FullWidthMessage("Send a message to start talking to $agentName.")
                 else -> LazyColumn(
                     Modifier.fillMaxSize().pointerInput(maxReveal) {
                         val settle: () -> Unit = { scope.launch { reveal.animateTo(0f) } }
@@ -189,7 +190,7 @@ fun ChatView(
         }
         AgentMessageReceipts(agentMessages, waitingOnYou)
         AnimatedVisibility(visible = !answeringHere && WorkspaceListing.needsTerminalAnswer(status)) {
-            NeedsYouCard(status?.label.orEmpty(), onShowTerminal)
+            NeedsYouCard(status?.label.orEmpty().ifBlank { "${agentName.replaceFirstChar { it.uppercase() }} needs your answer" }, onShowTerminal)
         }
         if (!showComposer) {
             Spacer(Modifier.navigationBarsPadding())
@@ -197,6 +198,7 @@ fun ChatView(
         }
         FileSuggestions(fileSuggestions, onPick = onPickFile)
         ChatComposer(
+            agentName = agentName,
             draft = draft,
             onDraftChange = onDraftChange,
             working = working,
@@ -490,7 +492,7 @@ private fun NeedsYouCard(label: String, onShowTerminal: () -> Unit) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
     ) {
         Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label.ifBlank { "Claude needs your answer" }, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             TextButton(onClick = onShowTerminal) {
                 Icon(Icons.Filled.Terminal, contentDescription = null, Modifier.size(18.dp))
                 Spacer(Modifier.size(6.dp))
@@ -502,6 +504,7 @@ private fun NeedsYouCard(label: String, onShowTerminal: () -> Unit) {
 
 @Composable
 private fun ChatComposer(
+    agentName: String,
     draft: String,
     onDraftChange: (String) -> Unit,
     working: Boolean,
@@ -531,7 +534,7 @@ private fun ChatComposer(
                     field = it
                     onDraftChange(it.text)
                 },
-                placeholder = { Text(if (messagingAgent) "Send message after you answer" else "Message Claude") },
+                placeholder = { Text(if (messagingAgent) "Send message after you answer" else "Message $agentName") },
                 leadingIcon = { AttachImageButton(enabled = !sendingImages, onPickPhotos = onPickPhotos, onTakePhoto = onTakePhoto) },
                 maxLines = 6,
                 shape = ComposerShape,
@@ -547,7 +550,7 @@ private fun ChatComposer(
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send the message")
                 }
                 working -> FilledIconButton(onClick = onStop) {
-                    Icon(Icons.Filled.Stop, contentDescription = "Stop Claude")
+                    Icon(Icons.Filled.Stop, contentDescription = "Stop $agentName")
                 }
                 else -> FilledIconButton(onClick = onSend, enabled = false) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send the message")

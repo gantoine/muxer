@@ -4,10 +4,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gantoine/muxer/relay/internal/chat"
 )
 
-func feedAll(t *Transcript, lines ...string) []Entry {
-	var changed []Entry
+func feedAll(t *Transcript, lines ...string) []chat.Entry {
+	var changed []chat.Entry
 	for _, raw := range lines {
 		changed = append(changed, t.Feed([]byte(raw))...)
 	}
@@ -29,14 +31,14 @@ func TestTranscriptTurnsMessagesIntoEntries(t *testing.T) {
 	if len(entries) != 3 {
 		t.Fatalf("got %d entries: %+v", len(entries), entries)
 	}
-	if entries[0].Kind != KindUser || entries[0].Text != "fix the tests" || entries[0].Time != "t1" {
+	if entries[0].Kind != chat.KindUser || entries[0].Text != "fix the tests" || entries[0].Time != "t1" {
 		t.Errorf("user entry = %+v", entries[0])
 	}
-	if entries[1].Kind != KindAssistant || entries[1].Text != "Running them now." {
+	if entries[1].Kind != chat.KindAssistant || entries[1].Text != "Running them now." {
 		t.Errorf("assistant entry = %+v", entries[1])
 	}
 	tool := entries[2]
-	if tool.ID != "toolu_1" || tool.Tool.Name != "Bash" || tool.Tool.Summary != "go test ./..." || tool.Tool.Status != ToolDone || tool.Tool.Output != "ok  all" {
+	if tool.ID != "toolu_1" || tool.Tool.Name != "Bash" || tool.Tool.Summary != "go test ./..." || tool.Tool.Status != chat.ToolDone || tool.Tool.Output != "ok  all" {
 		t.Errorf("tool entry = %+v %+v", tool, tool.Tool)
 	}
 }
@@ -45,7 +47,7 @@ func TestToolResultsUpdateTheirToolEntry(t *testing.T) {
 	transcript := NewTranscript()
 	feedAll(transcript, `{"type":"assistant","uuid":"a","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/Users/me/app/src/main.go"}}]}}`)
 	changed := transcript.Feed([]byte(`{"type":"user","uuid":"u","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":[{"type":"text","text":"no such file"}]}]}}`))
-	if len(changed) != 1 || changed[0].ID != "t1" || changed[0].Tool.Status != ToolFailed || changed[0].Tool.Output != "no such file" || changed[0].Tool.Summary != "src/main.go" {
+	if len(changed) != 1 || changed[0].ID != "t1" || changed[0].Tool.Status != chat.ToolFailed || changed[0].Tool.Output != "no such file" || changed[0].Tool.Summary != "src/main.go" {
 		t.Fatalf("changed = %+v", changed)
 	}
 	if len(transcript.Entries()) != 1 {
@@ -62,7 +64,7 @@ func TestSlashCommandsAndLocalOutput(t *testing.T) {
 		`{"type":"user","uuid":"r","message":{"role":"user","content":"<system-reminder>hidden</system-reminder>"}}`,
 	)
 	entries := transcript.Entries()
-	want := []struct{ kind, text string }{{KindUser, "/model opus"}, {KindNotice, "Set model to Opus"}, {KindNotice, "Interrupted"}}
+	want := []struct{ kind, text string }{{chat.KindUser, "/model opus"}, {chat.KindNotice, "Set model to Opus"}, {chat.KindNotice, "Interrupted"}}
 	if len(entries) != len(want) {
 		t.Fatalf("got %+v", entries)
 	}
@@ -97,62 +99,6 @@ func TestFindTranscriptUsesTheEncodedProjectFolder(t *testing.T) {
 	}
 	if _, ok := FindTranscript(config, "/Users/me/my.app", "../../etc/passwd"); ok {
 		t.Error("accepted a session id with path characters")
-	}
-}
-
-func TestTailReturnsWholeLinesAndNoticesTruncation(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "s.jsonl")
-	tail := NewTail(file, 0)
-	if lines, _, err := tail.Lines(); err != nil || lines != nil {
-		t.Fatalf("missing file: %q %v", lines, err)
-	}
-	write := func(content string, appendTo bool) {
-		flags := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
-		if appendTo {
-			flags = os.O_CREATE | os.O_WRONLY | os.O_APPEND
-		}
-		f, err := os.OpenFile(file, flags, 0o600)
-		if err != nil {
-			t.Fatal(err)
-		}
-		f.WriteString(content)
-		f.Close()
-	}
-	write("one\ntw", false)
-	lines, _, _ := tail.Lines()
-	if len(lines) != 1 || string(lines[0]) != "one" {
-		t.Fatalf("first read = %q", lines)
-	}
-	write("o\nthree\n", true)
-	lines, _, _ = tail.Lines()
-	if len(lines) != 2 || string(lines[0]) != "two" || string(lines[1]) != "three" {
-		t.Fatalf("second read = %q", lines)
-	}
-	write("new\n", false)
-	lines, restarted, _ := tail.Lines()
-	if !restarted || len(lines) != 1 || string(lines[0]) != "new" {
-		t.Fatalf("after truncation = %q restarted=%v", lines, restarted)
-	}
-}
-
-func TestTailStartsNearTheEndOfALongFile(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "s.jsonl")
-	if err := os.WriteFile(file, []byte("first line\nsecond\nthird\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	tail := NewTail(file, 10)
-	lines, _, err := tail.Lines()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(lines) != 1 || string(lines[0]) != "third" {
-		t.Fatalf("only whole lines inside the window must be read, got %q", lines)
-	}
-	f, _ := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0o600)
-	f.WriteString("fourth\n")
-	f.Close()
-	if lines, _, _ = tail.Lines(); len(lines) != 1 || string(lines[0]) != "fourth" {
-		t.Fatalf("later reads continue from where the first stopped, got %q", lines)
 	}
 }
 
@@ -227,7 +173,7 @@ func TestReadingAnImageFromThePhoneDoesNotRepeatIt(t *testing.T) {
 		`{"type":"assistant","uuid":"a1","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/var/folders/xr/abc/T/clipboard-2026-10-17-084701-6FFF738B.jpeg"}}]}}`,
 		`{"type":"user","uuid":"r1","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"AAAA"}}]}]}}`,
 	)
-	if tool := transcript.Entries()[0].Tool; tool.Status != ToolDone || tool.Images != nil {
+	if tool := transcript.Entries()[0].Tool; tool.Status != chat.ToolDone || tool.Images != nil {
 		t.Errorf("tool = %+v", tool)
 	}
 }
@@ -236,7 +182,7 @@ func TestThinkingWithTextBecomesAnEntry(t *testing.T) {
 	transcript := NewTranscript()
 	feedAll(transcript, `{"type":"assistant","uuid":"a1","timestamp":"t1","message":{"role":"assistant","content":[{"type":"thinking","thinking":"  check the tests first  "},{"type":"text","text":"On it."}]}}`)
 	entries := transcript.Entries()
-	if len(entries) != 2 || entries[0].Kind != KindThinking || entries[0].Text != "check the tests first" || entries[0].ID != "a1:0" || entries[1].Kind != KindAssistant {
+	if len(entries) != 2 || entries[0].Kind != chat.KindThinking || entries[0].Text != "check the tests first" || entries[0].ID != "a1:0" || entries[1].Kind != chat.KindAssistant {
 		t.Fatalf("entries = %+v", entries)
 	}
 }
@@ -259,17 +205,6 @@ func TestEditResultsCarryTheirDiff(t *testing.T) {
 	}
 }
 
-func TestLongDiffsAreCapped(t *testing.T) {
-	lines := make([]string, maxDiffLines+50)
-	for i := range lines {
-		lines[i] = "+line"
-	}
-	hunks := capHunks([]Hunk{{OldStart: 1, NewStart: 1, Lines: lines}, {OldStart: 900, NewStart: 900, Lines: []string{"-x"}}})
-	if len(hunks) != 1 || len(hunks[0].Lines) != maxDiffLines {
-		t.Fatalf("hunks = %d, first has %d lines", len(hunks), len(hunks[0].Lines))
-	}
-}
-
 func TestTodoWriteCarriesItsChecklist(t *testing.T) {
 	transcript := NewTranscript()
 	feedAll(transcript,
@@ -277,7 +212,11 @@ func TestTodoWriteCarriesItsChecklist(t *testing.T) {
 		`{"type":"user","uuid":"u","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"td1","content":"Todos have been modified successfully."}]}}`,
 	)
 	todos := transcript.Entries()[0].Tool.Todos
-	want := []Todo{{"Rename Sub", "completed", "Renaming Sub"}, {"Add Multiply", "in_progress", "Adding Multiply"}, {"Write tests", "pending", "Writing tests"}}
+	want := []chat.Todo{
+		{Content: "Rename Sub", Status: "completed", ActiveForm: "Renaming Sub"},
+		{Content: "Add Multiply", Status: "in_progress", ActiveForm: "Adding Multiply"},
+		{Content: "Write tests", Status: "pending", ActiveForm: "Writing tests"},
+	}
 	if len(todos) != len(want) {
 		t.Fatalf("todos = %+v", todos)
 	}

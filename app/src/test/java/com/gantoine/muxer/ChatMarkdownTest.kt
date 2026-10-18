@@ -112,4 +112,12 @@ class ChatMarkdownTest {
     fun relativeLinksStayPlainText() {
         assertEquals(listOf(InlineSpan("main.go")), ChatMarkdown.inline("[main.go](src/main.go)"))
     }
+
+    @Test
+    fun linkTargetsPaddedWithSpacesStillParse() {
+        assertEquals(
+            listOf(InlineSpan("Fixed "), InlineSpan("main.go"), InlineSpan(".")),
+            ChatMarkdown.inline("Fixed [main.go]( /src/app/main.go ).")
+        )
+    }
 }

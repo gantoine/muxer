@@ -89,6 +89,7 @@ import com.gantoine.muxer.images.CameraCaptures
 import com.gantoine.muxer.images.ChatImages
 import com.gantoine.muxer.images.RemoteImages
 import com.gantoine.muxer.model.AgentMessaging
+import com.gantoine.muxer.model.AgentNames
 import com.gantoine.muxer.model.AgentStatus
 import com.gantoine.muxer.model.ApprovalReply
 import com.gantoine.muxer.model.WorkspaceListing
@@ -147,6 +148,7 @@ fun TerminalScreen(
     val workspace = workspaces?.firstOrNull { it.id == workspaceId }
     val terminal = workspace?.terminals?.firstOrNull { it.id == surfaceId }
     val agentStatus = terminal?.let(WorkspaceListing::agentStatus)
+    val agentName = AgentNames.display(terminal?.agentSource) ?: "the agent"
     val messagingAgent = AgentMessaging.shouldMessage(agentStatus, approvals.isNotEmpty(), inputState?.waitingOnHuman == true)
     val waitingOnYou = approvals.isNotEmpty() || agentStatus is AgentStatus.NeedsYou
     val questionOpen = approvals.any { it.isQuestion }
@@ -187,7 +189,7 @@ fun TerminalScreen(
         if (granted) {
             launchCamera()
         } else {
-            scope.launch { snackbar.showSnackbar("Allow the camera to take a photo for Claude.") }
+            scope.launch { snackbar.showSnackbar("Allow the camera to take a photo for $agentName.") }
         }
     }
     val mentionQuery = FileMentions.query(composerText)
@@ -340,7 +342,7 @@ fun TerminalScreen(
                     images = images - sending.toSet()
                     if (composerText.trim() == message) composerText = ""
                 }
-                .onFailure { snackbar.showSnackbar(it.message ?: "The images didn't reach Claude.") }
+                .onFailure { snackbar.showSnackbar(it.message ?: "The images didn't reach $agentName.") }
         }
     }
 
@@ -439,6 +441,7 @@ fun TerminalScreen(
             if (showChat && currentChat != null) {
                 ChatView(
                     chat = currentChat,
+                    agentName = agentName,
                     status = agentStatus,
                     midTurn = midTurn,
                     answeringHere = approvals.isNotEmpty(),

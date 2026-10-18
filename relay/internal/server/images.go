@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/gantoine/muxer/relay/internal/chat"
 	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 )
@@ -37,20 +38,20 @@ func validImages(images []cmux.ChatImage) error {
 
 func (s *session) sendImages(ctx context.Context, current *attachment, text string, images []cmux.ChatImage) error {
 	return guard(s.server, cmux.MethodChatSend, errImagesUnsupported, func() error {
-		sessionID, _, err := s.server.claudeSession(ctx, current.workspaceID, current.surfaceID)
+		agent, err := s.server.chatAgent(ctx, current.workspaceID, current.surfaceID)
 		if err != nil {
 			return err
 		}
-		if sessionID == "" {
-			return &requestError{Code: "no_agent", Message: "Images can only go to Claude, and Claude isn't running in this terminal."}
+		if agent.SessionID == "" {
+			return &requestError{Code: "no_agent", Message: "Images can only go to Claude or Codex, and neither is running in this terminal."}
 		}
-		return s.server.cmux.SendChat(ctx, sessionID, text, images)
+		return s.server.cmux.SendChat(ctx, agent.SessionID, text, images)
 	})
 }
 
 func readAttachedImage(path string) (cmux.ChatImage, error) {
-	if filepath.Clean(path) != path || !claude.IsAttachedImage(path) {
-		return cmux.ChatImage{}, invalid("That isn't an image sent to Claude.")
+	if filepath.Clean(path) != path || !chat.IsAttachedImage(path) {
+		return cmux.ChatImage{}, invalid("That isn't an image sent to the agent.")
 	}
 	gone := &requestError{Code: "not_found", Message: "That image is no longer on the computer."}
 	info, err := os.Lstat(path)
@@ -73,12 +74,12 @@ func (s *session) transcriptImage(ctx context.Context, current *attachment, ref 
 		return cmux.ChatImage{}, invalid("That isn't an image from this conversation.")
 	}
 	gone := &requestError{Code: "not_found", Message: "That image is no longer in the conversation."}
-	sessionID, cwd, err := s.server.claudeSession(ctx, current.workspaceID, current.surfaceID)
+	agent, err := s.server.chatAgent(ctx, current.workspaceID, current.surfaceID)
 	if err != nil {
 		return cmux.ChatImage{}, err
 	}
-	path, ok := claude.FindTranscript(s.server.options.ClaudeConfigDir, cwd, sessionID)
-	if sessionID == "" || !ok {
+	path, ok := s.server.transcriptPath(agent)
+	if agent.Kind != agentKindClaude || !ok {
 		return cmux.ChatImage{}, gone
 	}
 	image, err := claude.ReadImage(path, ref)

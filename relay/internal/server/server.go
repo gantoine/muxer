@@ -17,6 +17,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/approvals"
 	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
+	"github.com/gantoine/muxer/relay/internal/codex"
 	"github.com/gantoine/muxer/relay/internal/devices"
 	"github.com/gantoine/muxer/relay/internal/files"
 	"github.com/gantoine/muxer/relay/internal/host"
@@ -122,6 +123,7 @@ type Options struct {
 	PollInterval    Intervals
 	ClaudeConfigDir string
 	ClaudeSession   func(surfaceID string) (claude.SessionRef, bool)
+	CodexHome       string
 	Approvals       Approvals
 	Agents          Agents
 	HostUsage       func(context.Context) (host.Usage, error)
@@ -156,6 +158,9 @@ func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, l
 	}
 	if options.ClaudeConfigDir == "" {
 		options.ClaudeConfigDir = claude.ConfigDir()
+	}
+	if options.CodexHome == "" {
+		options.CodexHome = codex.HomeDir()
 	}
 	if options.ClaudeSession == nil {
 		options.ClaudeSession = claude.NewResolver(options.ClaudeConfigDir, claude.SystemProcesses{}, claudeScanMaxAge).ForSurface

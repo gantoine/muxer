@@ -45,6 +45,18 @@ func TestPhoneCanSendImagesToClaude(t *testing.T) {
 		t.Fatalf("the images must reach the Claude session: %+v", chats)
 	}
 
+	relay.cmux.setAgent(cmux.AgentSession{Kind: "codex", SessionID: "thread-1"})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "send_images", "id": "4b", "images": images})
+	if result := resultFor(t, ctx, conn, "4b"); result["ok"] != true {
+		t.Fatalf("send_images to Codex failed: %v", result)
+	}
+	relay.cmux.mu.Lock()
+	chats = relay.cmux.chats
+	relay.cmux.mu.Unlock()
+	if len(chats) != 2 || chats[1].sessionID != "thread-1" {
+		t.Fatalf("the images must reach the Codex thread: %+v", chats)
+	}
+
 	for id, bad := range map[string][]map[string]string{
 		"5": nil,
 		"6": {{"data_b64": photo, "format": "bmp"}},

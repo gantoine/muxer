@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gantoine/muxer/relay/internal/chat"
 	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/pubsub"
@@ -211,18 +212,18 @@ func planText(raw string) string {
 func describeToolInput(raw string) (detail, description string) {
 	var input map[string]any
 	if err := json.Unmarshal([]byte(raw), &input); err != nil {
-		return claude.Truncate(raw, maxDetailLength), ""
+		return chat.Truncate(raw, maxDetailLength), ""
 	}
 	description, _ = input["description"].(string)
 	delete(input, "description")
 	if _, value := claude.ToolInputValue(input); value != "" {
-		return claude.Truncate(value, maxDetailLength), description
+		return chat.Truncate(value, maxDetailLength), description
 	}
 	if len(input) == 0 {
 		return "", description
 	}
 	pretty, _ := json.MarshalIndent(input, "", "  ")
-	return claude.Truncate(string(pretty), maxDetailLength), description
+	return chat.Truncate(string(pretty), maxDetailLength), description
 }
 
 func (t *Tracker) Run(ctx context.Context) {

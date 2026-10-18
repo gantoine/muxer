@@ -38,7 +38,7 @@ class AgentMessagingTest {
 
     @Test
     fun explainsEachDeliveryState() {
-        assertEquals("Claude gets this after you answer", AgentMessaging.statusLine(message("a", AgentMessage.QUEUED, 1.0), waitingOnYou = true))
+        assertEquals("The agent gets this after you answer", AgentMessaging.statusLine(message("a", AgentMessage.QUEUED, 1.0), waitingOnYou = true))
         assertEquals("Waiting for the agent to pick it up", AgentMessaging.statusLine(message("a", AgentMessage.QUEUED, 1.0), waitingOnYou = false))
         assertEquals(
             "Not delivered: messages are turned off for this agent",

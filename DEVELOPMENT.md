@@ -74,7 +74,7 @@ The phone opens `GET /v1/ws` with `Authorization: Bearer <token>` and exchanges 
 | `top` | CPU and memory in cmux: totals, each coding agent, and each workspace with its five heaviest processes. The app asks every 3 seconds while its Metrics page is open. |
 | `notifications` | List the notifications in cmux's notification center, read ones included, with `is_read`. |
 | `mark_notifications_read {notification_id? \| surface_id? \| all?}` | Mark one notification, one terminal's notifications or all of them read on the Mac. |
-| `send_images {images, text?}` | Paste 1 to 4 images (`{data_b64, format}`, up to 5 MB each) and optional text into the Claude session in the attached terminal, then submit. |
+| `send_images {images, text?}` | Paste 1 to 4 images (`{data_b64, format}`, up to 5 MB each) and optional text into the Claude or Codex session in the attached terminal, then submit. |
 | `recent_sessions {query?, limit?}` | List past agent sessions from cmux's Vault, newest first, or search their transcripts. A session running in a terminal comes with that terminal's `workspace_id` and `surface_id`. The default limit is 50 and the most is 200. |
 | `resume_session {agent, session_id}` | Open a session that is already running, or open a workspace in the session's folder and run its resume command there. The answer is `{workspace_id, surface_id, already_open}`. |
 | `workspace_action {workspace_id, action, color?, description?}` | Pin or unpin a workspace, mark it read or unread, set or clear its color, or set its description (an empty one clears it). |
