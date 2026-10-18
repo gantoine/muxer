@@ -31,6 +31,7 @@ data class TerminalInfo(
     val currentDirectory: String? = null,
     val agentSource: String? = null,
     val agentState: String? = null,
+    val isFocused: Boolean = false,
     val gitBranch: String? = null,
     val gitDirty: Boolean? = null,
     val listeningPorts: List<Int> = emptyList(),

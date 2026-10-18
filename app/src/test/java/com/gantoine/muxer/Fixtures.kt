@@ -17,6 +17,8 @@ fun shell(id: String) = TerminalInfo(id = id, title = "zsh")
 
 fun claude(id: String) = TerminalInfo(id = id, title = "claude", agentSource = "claude")
 
+fun TerminalInfo.lastUsed() = copy(isFocused = true)
+
 fun snapshot(macId: String, vararg workspaces: WorkspaceInfo, connected: Boolean = true, name: String = "$macId's Mac") =
     MacSnapshot(macId = macId, macName = name, connected = connected, updatedAt = 0, workspaces = workspaces.toList())
 

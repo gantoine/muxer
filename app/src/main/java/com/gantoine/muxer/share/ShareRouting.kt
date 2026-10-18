@@ -12,6 +12,7 @@ data class ShareTarget(
     val title: String,
     val agentName: String?,
     val agentTerminals: List<TerminalInfo> = emptyList(),
+    val toLastUsedAgent: Boolean = false,
 ) {
     val needsTerminalChoice: Boolean get() = agentTerminals.size > 1
 }
@@ -67,12 +68,13 @@ object ShareRouting {
                 snapshot.workspaces
                     .firstOrNull { ShortcutPlan.id(snapshot.macId, it.id) == shortcutId }
                     ?.let { target(snapshot, it) }
+                    ?.takeUnless { it.needsTerminalChoice && !it.toLastUsedAgent }
             }
 
     private fun target(snapshot: MacSnapshot, workspace: WorkspaceInfo): ShareTarget? {
         val shortcut = ShortcutPlan.shortcut(snapshot.macId, snapshot.macName, workspace) ?: return null
         val agentTerminals = workspace.terminals.filter { it.agentSource != null }
-        return ShareTarget(snapshot.macId, workspace, shortcut.surfaceId, shortcut.title, shortcut.agentName, agentTerminals)
+        return ShareTarget(snapshot.macId, workspace, shortcut.surfaceId, shortcut.title, shortcut.agentName, agentTerminals, shortcut.shareTarget)
     }
 
     private fun byRecency(workspaces: List<WorkspaceInfo>): List<WorkspaceInfo> =

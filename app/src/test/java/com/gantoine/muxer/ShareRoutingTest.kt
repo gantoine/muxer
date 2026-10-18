@@ -108,11 +108,28 @@ class ShareRoutingTest {
     }
 
     @Test
-    fun onlyAgentShortcutsAreShareTargets() {
-        val agent = ShortcutPlan.shortcut("a", "Mac", workspace("w1", 1.0, shell("s1"), claude("c1")))!!
-        val plain = ShortcutPlan.shortcut("a", "Mac", workspace("w2", 1.0, shell("s2")))!!
+    fun onlyShortcutsWhoseLastUsedPaneIsAnAgentAreShareTargets() {
+        val agent = ShortcutPlan.shortcut("a", "Mac", workspace("w1", 1.0, shell("s1"), claude("c1").lastUsed()))!!
+        val shellLastUsed = ShortcutPlan.shortcut("a", "Mac", workspace("w2", 1.0, shell("s2").lastUsed(), claude("c2")))!!
+        val nothingLastUsed = ShortcutPlan.shortcut("a", "Mac", workspace("w3", 1.0, claude("c3")))!!
+        val plain = ShortcutPlan.shortcut("a", "Mac", workspace("w4", 1.0, shell("s4")))!!
         assertEquals(setOf(ShortcutPlan.CONVERSATION_CATEGORY, ShortcutPlan.SHARE_CATEGORY), ShortcutPlan.categories(agent))
+        assertEquals(setOf(ShortcutPlan.CONVERSATION_CATEGORY), ShortcutPlan.categories(shellLastUsed))
+        assertEquals(setOf(ShortcutPlan.CONVERSATION_CATEGORY), ShortcutPlan.categories(nothingLastUsed))
         assertEquals(setOf(ShortcutPlan.CONVERSATION_CATEGORY), ShortcutPlan.categories(plain))
+    }
+
+    @Test
+    fun shortcutSharesGoToTheLastUsedAgentPane() {
+        val snapshots = listOf(snapshot("a", workspace("w", 1.0, claude("c1"), claude("c2").lastUsed())))
+        val route = ShareRouting.route(ShortcutPlan.id("a", "w"), snapshots, listOf("a"))
+        assertEquals("c2", (route as ShareRoute.Open).target.surfaceId)
+    }
+
+    @Test
+    fun shortcutSharesAskWhichAgentWhenNoneWasLastUsed() {
+        val snapshots = listOf(snapshot("a", workspace("w", 1.0, shell("s1").lastUsed(), claude("c1"), claude("c2"))))
+        assertEquals(ShareRoute.Pick, ShareRouting.route(ShortcutPlan.id("a", "w"), snapshots, listOf("a")))
     }
 
     @Test

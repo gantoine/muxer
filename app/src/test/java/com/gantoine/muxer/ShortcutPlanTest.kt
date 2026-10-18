@@ -42,6 +42,8 @@ class ShortcutPlanTest {
         val withoutAgent = ShortcutPlan.shortcut("a", "Mac", workspace("w", null, shell("s1"), shell("s2")))
         assertEquals("c1", withAgent?.surfaceId)
         assertEquals("s1", withoutAgent?.surfaceId)
+        assertEquals("c2", ShortcutPlan.shortcut("a", "Mac", workspace("w", null, claude("c1"), claude("c2").lastUsed()))?.surfaceId)
+        assertEquals("s2", ShortcutPlan.shortcut("a", "Mac", workspace("w", null, shell("s1"), shell("s2").lastUsed()))?.surfaceId)
         assertNull(ShortcutPlan.shortcut("a", "Mac", workspace("empty", null)))
     }
 

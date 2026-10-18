@@ -31,8 +31,10 @@ object ShortcutPlan {
     fun isWorkspaceShortcut(id: String): Boolean = id.startsWith(PREFIX)
 
     fun shortcut(macId: String, macName: String, workspace: WorkspaceInfo): WorkspaceShortcut? {
-        val agentTerminal = workspace.terminals.firstOrNull { it.agentSource != null }
-        val terminal = agentTerminal ?: workspace.terminals.firstOrNull() ?: return null
+        val lastUsed = workspace.terminals.firstOrNull { it.isFocused }
+        val lastUsedAgent = lastUsed?.takeIf { it.agentSource != null }
+        val agentTerminal = lastUsedAgent ?: workspace.terminals.firstOrNull { it.agentSource != null }
+        val terminal = agentTerminal ?: lastUsed ?: workspace.terminals.firstOrNull() ?: return null
         return WorkspaceShortcut(
             macId = macId,
             macName = macName,
@@ -41,7 +43,7 @@ object ShortcutPlan {
             title = workspace.title.ifBlank { terminal.title }.ifBlank { FALLBACK_TITLE },
             color = WorkspaceListing.color(workspace),
             agentName = AgentNames.display(agentTerminal?.agentSource),
-            shareTarget = agentTerminal != null,
+            shareTarget = lastUsedAgent != null,
         )
     }
 
