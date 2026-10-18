@@ -61,6 +61,7 @@ import com.gantoine.muxer.MuxerApplication
 import com.gantoine.muxer.net.PairingClient
 import com.gantoine.muxer.net.PairingException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -76,6 +77,11 @@ fun PairScreen(app: MuxerApplication, initialUrl: String, initialCode: String, o
     var scanning by remember { mutableStateOf(false) }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) scanning = true else error = "Allow camera access to scan, or type the address and code."
+    }
+    var pairedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        app.notificationPermissionChanged()
+        pairedId?.let(onPaired)
     }
 
     fun scan() {
@@ -94,8 +100,14 @@ fun PairScreen(app: MuxerApplication, initialUrl: String, initialCode: String, o
             try {
                 val deviceName = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
                 val (url, response) = app.pairing.pair(address, code, deviceName)
+                val firstComputer = app.store.macs.first().isEmpty()
                 app.store.add(response.deviceId, response.macName, url, response.token, notificationSeq = 0)
-                onPaired(response.deviceId)
+                if (firstComputer && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !app.notifier.canNotify()) {
+                    pairedId = response.deviceId
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    onPaired(response.deviceId)
+                }
             } catch (failure: PairingException) {
                 error = failure.message
             } catch (failure: CancellationException) {
