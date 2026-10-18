@@ -44,6 +44,18 @@ func TestMetricsCoverCmuxAndTheComputer(t *testing.T) {
 	}
 }
 
+func TestAutomationsCanBeRead(t *testing.T) {
+	p := connect(t)
+	automations := p.must("automations", nil)
+	if _, ok := automations["rules"].([]any); !ok {
+		t.Fatalf("automations answered %v", automations)
+	}
+	logs := p.must("automation_logs", map[string]any{"limit": 5})
+	if _, ok := logs["logs"].([]any); !ok {
+		t.Fatalf("automation_logs answered %v", logs)
+	}
+}
+
 func TestRecentSessionsAnswer(t *testing.T) {
 	p := connect(t)
 	sessions := p.must("recent_sessions", map[string]any{"limit": 5})

@@ -88,6 +88,8 @@ var parallelRequests = map[string]bool{
 	"top":             true,
 	"host_usage":      true,
 	"vms":             true,
+	"automations":     true,
+	"automation_logs": true,
 }
 
 func newSession(server *Server, conn *websocket.Conn, device devices.Device) *session {
@@ -482,6 +484,28 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 			return nil, invalid("set_vm_paused needs vm_id and paused.")
 		}
 		return s.server.setVMPaused(ctx, request.VMID, *request.Paused)
+	case "automations":
+		return s.server.automations(ctx)
+	case "set_automation_enabled":
+		var request struct {
+			RuleID  string `json:"rule_id"`
+			Enabled *bool  `json:"enabled"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || request.RuleID == "" || request.Enabled == nil {
+			return nil, invalid("set_automation_enabled needs rule_id and enabled.")
+		}
+		return s.server.setAutomationEnabled(ctx, request.RuleID, *request.Enabled)
+	case "automation_logs":
+		var request struct {
+			RuleID string `json:"rule_id"`
+			Limit  int    `json:"limit"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil {
+			return nil, invalid("automation_logs takes an optional rule_id and limit.")
+		}
+		return s.server.automationLogs(ctx, request.RuleID, request.Limit)
+	case "reload_automations":
+		return s.server.reloadAutomations(ctx)
 	case "send_images":
 		var request struct {
 			Text   string           `json:"text"`

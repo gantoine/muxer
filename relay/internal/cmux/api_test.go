@@ -125,3 +125,50 @@ func TestEventTargetsPreferTheEventOverItsPayload(t *testing.T) {
 		t.Fatal("only agent.hook events are hooks")
 	}
 }
+
+func TestAutomationCallsUseCmuxNamesAndShapes(t *testing.T) {
+	var mu sync.Mutex
+	var calls []string
+	fake := startFakeSocket(t, func(method string, params map[string]any, _ bool) string {
+		id, _ := params["id"].(string)
+		mu.Lock()
+		calls = append(calls, method+" "+id)
+		mu.Unlock()
+		switch method {
+		case MethodAutomationList:
+			return `{"ok":true,"result":{"rules":[{"id":"r1","enabled":true,"event":null,"category":"agent","action_count":2,"rate_limit":{"interval_seconds":1,"maximum":1}}]}}`
+		case MethodAutomationShow:
+			return `{"ok":true,"result":{"id":"r1","when":{"category":"agent"},"then":[{"action":"notify","title":"Hi"}],"enabled":false}}`
+		case MethodAutomationLogs:
+			return `{"ok":true,"result":{"logs":[{"occurred_at":"2026-10-18T09:00:00Z","rule_id":"r1","event":"agent.needs_input","status":"completed","detail":"","chain":["r1"]}]}}`
+		}
+		return `{"ok":true,"result":{"id":"r1","enabled":false,"pending":true}}`
+	})
+	client := NewClient(fake.path, nil)
+	defer client.Close()
+	ctx := context.Background()
+
+	rules, err := client.Automations(ctx)
+	if err != nil || len(rules) != 1 || rules[0].Event != nil || *rules[0].Category != "agent" || rules[0].RateLimit.Maximum != 1 {
+		t.Fatalf("rules = %+v, %v", rules, err)
+	}
+	rule, err := client.Automation(ctx, "r1")
+	if err != nil || rule.Enabled == nil || *rule.Enabled || rule.Then[0]["title"] != "Hi" {
+		t.Fatalf("rule = %+v, %v", rule, err)
+	}
+	logs, err := client.AutomationLogs(ctx, 10)
+	if err != nil || len(logs) != 1 || logs[0].Status != "completed" {
+		t.Fatalf("logs = %+v, %v", logs, err)
+	}
+	if err := client.SetAutomationEnabled(ctx, "r1", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.ReloadAutomations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Contains(calls, "automation.disable r1") || !slices.Contains(calls, "automation.reload ") {
+		t.Fatalf("calls = %v", calls)
+	}
+}

@@ -83,3 +83,7 @@ The phone opens `GET /v1/ws` with `Authorization: Bearer <token>` and exchanges 
 | `create_group {name, workspace_ids}`, `rename_group`, `pin_group {pinned}`, `set_group_color {color}`, `add_to_group`, `remove_from_group`, `ungroup` | Manage workspace groups by `group_id` and `workspace_id`. `ungroup` keeps the workspaces. Removing a group's anchor workspace dissolves the group. |
 | `create_workspace_in_group {group_id, title?}` | Open a workspace in a group. The answer is `{workspace_id, surface_id}`. |
 | `reconnect_workspace {workspace_id}` | Reconnect an SSH workspace. |
+| `automations` | List the rules in `~/.cmuxterm/automations.json`. Each has `id`, `enabled`, `trigger` (the event or category in words), `conditions`, `actions` (`{type, summary, fields}`), `rate_limit` and, when it fired since cmux started, `last_run`. When cmux couldn't read the file, the list is empty and `config_error` says why. |
+| `set_automation_enabled {rule_id, enabled}` | Turn a rule on or off. cmux writes the change to the file. The answer is the same as `automations`, once cmux has applied it. |
+| `automation_logs {rule_id?, limit?}` | cmux's recent automation log lines (firings, skips, errors and config changes), newest first, for one rule or all. The default limit is 100 and the most is 256. cmux keeps these in memory only. |
+| `reload_automations` | Make cmux read the file again, then answer like `automations`. |

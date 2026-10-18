@@ -86,6 +86,9 @@ var readOnlyMethods = map[string]bool{
 	MethodVMList:           true,
 	MethodVMStatus:         true,
 	MethodVMStats:          true,
+	MethodAutomationList:   true,
+	MethodAutomationShow:   true,
+	MethodAutomationLogs:   true,
 }
 
 func answered(err error) bool {
