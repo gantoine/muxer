@@ -134,7 +134,7 @@ func (s *Server) startAgentTask(ctx context.Context, request agentTaskRequest) (
 		}
 		terminal = terminalRef{WorkspaceID: created.WorkspaceID, SurfaceID: created.SurfaceID}
 	}
-	if err := s.runWhenReady(ctx, terminal, taskCommand(request.Agent)); err != nil {
+	if err := s.runWhenReady(ctx, terminal, taskCommand(request.Agent, s.options.LoginShell)); err != nil {
 		return terminalRef{}, err
 	}
 	return terminal, nil
@@ -161,6 +161,10 @@ func (s *Server) taskWorkspaceFolder(ctx context.Context, workspaceID string) (s
 	return "", nil
 }
 
-func taskCommand(agent string) string {
-	return agent + ` -- "$` + taskPromptVariable + `"`
+func taskCommand(agent, shell string) string {
+	forget := "unset " + taskPromptVariable
+	if filepath.Base(shell) == "fish" {
+		forget = "set -e " + taskPromptVariable
+	}
+	return agent + ` -- "$` + taskPromptVariable + `"; ` + forget
 }

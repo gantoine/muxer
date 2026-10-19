@@ -141,14 +141,14 @@ func TestAutomationsCanBeReadToggledAndReloaded(t *testing.T) {
 	}
 
 	turnedOff := p.must("set_automation_enabled", map[string]any{"rule_id": "muxer-e2e-notify", "enabled": false})
-	if flag(find(list(turnedOff["rules"]), "id", "muxer-e2e-notify")["enabled"]) {
+	if turnedOff["id"] != "muxer-e2e-notify" || flag(turnedOff["enabled"]) {
 		t.Fatalf("the answer must show the rule off: %v", turnedOff)
 	}
 	if saved, _ := os.ReadFile(automationsFile(t)); !strings.Contains(string(saved), `"enabled" : false`) {
 		t.Fatalf("cmux must have written the change to the file:\n%s", saved)
 	}
 	turnedOn := p.must("set_automation_enabled", map[string]any{"rule_id": "muxer-e2e-notify", "enabled": true})
-	if !flag(find(list(turnedOn["rules"]), "id", "muxer-e2e-notify")["enabled"]) {
+	if turnedOn["id"] != "muxer-e2e-notify" || !flag(turnedOn["enabled"]) {
 		t.Fatalf("the answer must show the rule on again: %v", turnedOn)
 	}
 	if failure := p.failure("set_automation_enabled", map[string]any{"rule_id": "muxer-e2e-missing", "enabled": true}); failure.Code != "not_found" {

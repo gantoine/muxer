@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -194,10 +195,20 @@ func TestPhoneTurnsAnAutomationOffAndReadsItsLogs(t *testing.T) {
 		t.Fatalf("set_automation_enabled without a rule must be refused: %v", result)
 	}
 
+	relay.cmux.mu.Lock()
+	relay.cmux.automationCalls = nil
+	relay.cmux.mu.Unlock()
 	_ = wsjson.Write(ctx, conn, map[string]any{"type": "set_automation_enabled", "id": "3", "rule_id": "phone-auto-resume", "enabled": false})
 	result := resultFor(t, ctx, conn, "3")
-	if result["ok"] != true || result["data"].(map[string]any)["rules"].([]any)[0].(map[string]any)["enabled"] != false {
-		t.Fatalf("the answer must be the list with the rule turned off: %v", result)
+	rule := result["data"].(map[string]any)
+	if result["ok"] != true || rule["id"] != "phone-auto-resume" || rule["enabled"] != false || len(rule["actions"].([]any)) == 0 {
+		t.Fatalf("the answer must be the rule, turned off and described: %v", result)
+	}
+	relay.cmux.mu.Lock()
+	shown := slices.DeleteFunc(slices.Clone(relay.cmux.automationCalls), func(call string) bool { return !strings.HasPrefix(call, "show ") })
+	relay.cmux.mu.Unlock()
+	if !slices.Equal(shown, []string{"show phone-auto-resume"}) {
+		t.Fatalf("a toggle must describe only its own rule: %v", shown)
 	}
 
 	_ = wsjson.Write(ctx, conn, map[string]any{"type": "automation_logs", "id": "4", "rule_id": "phone-auto-resume", "limit": 2})

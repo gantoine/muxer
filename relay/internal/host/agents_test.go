@@ -34,3 +34,20 @@ func TestAgentFinderLooksAgentsUpInTheLoginShell(t *testing.T) {
 		t.Fatalf("found = %v", found)
 	}
 }
+
+func TestAgentFinderRemembersABrokenShellForAWhile(t *testing.T) {
+	runs := filepath.Join(t.TempDir(), "runs")
+	shell := filepath.Join(t.TempDir(), "broken-shell")
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\necho run >> "+runs+"\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	finder := NewAgentFinder(shell, "claude")
+	for range 3 {
+		if _, err := finder.Installed(context.Background()); err == nil {
+			t.Fatal("a failing shell must report its error")
+		}
+	}
+	if logged, _ := os.ReadFile(runs); string(logged) != "run\n" {
+		t.Fatalf("the shell must run once while its failure is remembered, ran: %q", logged)
+	}
+}

@@ -77,3 +77,15 @@ func TestCmuxReportedPortsWinOverDiscovery(t *testing.T) {
 		t.Fatalf("discovered ports must fill in when cmux reports none: %v", got)
 	}
 }
+
+func TestPortsCmuxAlreadyReportsSkipTheProcessWalk(t *testing.T) {
+	reported := map[string]cmux.TerminalGit{"t1": {SurfaceID: "t1", ListeningPorts: []int{3000}}}
+	listening := map[int][]int{102: {3000}, 103: {3000, 5173}, 104: {8080}}
+	got := unreportedListeners(listening, reported)
+	if _, found := got[102]; found || len(got) != 2 || !slices.Equal(got[103], []int{3000, 5173}) {
+		t.Fatalf("only listeners with a port cmux doesn't know must be traced: %v", got)
+	}
+	if got := unreportedListeners(map[int][]int{102: {3000}}, reported); len(got) != 0 {
+		t.Fatalf("nothing is left to trace when cmux knows every port: %v", got)
+	}
+}

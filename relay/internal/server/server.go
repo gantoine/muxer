@@ -138,6 +138,7 @@ type Options struct {
 	Agents             Agents
 	HostUsage          func(context.Context) (host.Usage, error)
 	InstalledAgents    func(context.Context) ([]string, error)
+	LoginShell         string
 	Tailnet            Tailnet
 	Listeners          func(ctx context.Context, port int) ([]netip.Addr, error)
 	ListeningProcesses func(ctx context.Context) (map[int][]int, error)

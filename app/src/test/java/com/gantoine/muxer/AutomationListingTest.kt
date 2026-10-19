@@ -58,6 +58,14 @@ class AutomationListingTest {
     }
 
     @Test
+    fun theRelaysAnswerReplacesOnlyItsRule() {
+        val response = AutomationsResponse(listOf(resume, resume.copy(id = "other")))
+        val answered = AutomationListing.withRule(response, resume.copy(id = "other", enabled = false, conditions = emptyList()))
+        assertEquals(resume, answered.rules[0])
+        assertEquals(resume.copy(id = "other", enabled = false, conditions = emptyList()), answered.rules[1])
+    }
+
+    @Test
     fun relayAnswerDecodes() {
         val json = """
             {"rules":[{"id":"r1","enabled":false,"trigger":"any event in agent","category":"agent","conditions":["agent is \"claude\""],

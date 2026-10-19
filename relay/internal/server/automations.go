@@ -76,13 +76,7 @@ func (s *Server) automations(ctx context.Context) (automationsResponse, error) {
 	})
 	response := automationsResponse{Rules: make([]automationView, 0, len(rules))}
 	for _, summary := range rules {
-		view := summaryView(summary)
-		rule, err := automationCall(s, cmux.MethodAutomationShow, func() (cmux.AutomationRule, error) { return s.cmux.Automation(ctx, summary.ID) })
-		if err == nil {
-			describeRule(&view, rule)
-		}
-		view.LastRun = lastRun(logs, summary.ID)
-		response.Rules = append(response.Rules, view)
+		response.Rules = append(response.Rules, s.automationView(ctx, summary, logs))
 	}
 	if len(rules) == 0 {
 		if last := lastConfigReload(logs); last != nil && last.Status == "error" && s.describesCurrentFile(*last) {
@@ -90,6 +84,16 @@ func (s *Server) automations(ctx context.Context) (automationsResponse, error) {
 		}
 	}
 	return response, nil
+}
+
+func (s *Server) automationView(ctx context.Context, summary cmux.AutomationSummary, logs []cmux.AutomationLog) automationView {
+	view := summaryView(summary)
+	rule, err := automationCall(s, cmux.MethodAutomationShow, func() (cmux.AutomationRule, error) { return s.cmux.Automation(ctx, summary.ID) })
+	if err == nil {
+		describeRule(&view, rule)
+	}
+	view.LastRun = lastRun(logs, summary.ID)
+	return view
 }
 
 func (s *Server) automationLogs(ctx context.Context, id string, limit int) (automationLogsResponse, error) {
@@ -117,7 +121,7 @@ func (s *Server) automationLogs(ctx context.Context, id string, limit int) (auto
 	return automationLogsResponse{Logs: newestFirst}, nil
 }
 
-func (s *Server) setAutomationEnabled(ctx context.Context, id string, enabled bool) (automationsResponse, error) {
+func (s *Server) setAutomationEnabled(ctx context.Context, id string, enabled bool) (automationView, error) {
 	method := cmux.MethodAutomationDisable
 	configEvent := "config.disable"
 	if enabled {
@@ -126,29 +130,31 @@ func (s *Server) setAutomationEnabled(ctx context.Context, id string, enabled bo
 	}
 	started := time.Now().Truncate(time.Second)
 	if _, err := automationCall(s, method, func() (struct{}, error) { return struct{}{}, s.cmux.SetAutomationEnabled(ctx, id, enabled) }); err != nil {
-		return automationsResponse{}, err
+		return automationView{}, err
 	}
 	deadline := time.Now().Add(automationSettleTimeout)
 	for {
 		rules, err := s.cmux.Automations(ctx)
 		if err != nil {
-			return automationsResponse{}, err
+			return automationView{}, err
 		}
 		index := slices.IndexFunc(rules, func(rule cmux.AutomationSummary) bool { return rule.ID == id })
-		if index < 0 || rules[index].Enabled == enabled {
-			break
+		if index < 0 {
+			return automationView{}, &requestError{Code: "not_found", Message: "cmux doesn't have the rule " + id + " anymore."}
 		}
 		logs, _ := probe(s, cmux.MethodAutomationLogs, func() ([]cmux.AutomationLog, error) {
 			return s.cmux.AutomationLogs(ctx, automationLogCapacity)
 		})
-		if failure := failureSince(logs, id, configEvent, started); failure != nil {
-			return automationsResponse{}, &requestError{Code: "automation_failed", Message: "cmux couldn't change the rule: " + failure.Detail}
+		settled := rules[index].Enabled == enabled
+		if !settled {
+			if failure := failureSince(logs, id, configEvent, started); failure != nil {
+				return automationView{}, &requestError{Code: "automation_failed", Message: "cmux couldn't change the rule: " + failure.Detail}
+			}
 		}
-		if time.Now().After(deadline) || !pause(ctx, automationSettleStep) {
-			break
+		if settled || time.Now().After(deadline) || !pause(ctx, automationSettleStep) {
+			return s.automationView(ctx, rules[index], logs), nil
 		}
 	}
-	return s.automations(ctx)
 }
 
 func (s *Server) reloadAutomations(ctx context.Context) (automationsResponse, error) {

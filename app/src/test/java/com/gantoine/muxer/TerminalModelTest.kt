@@ -108,4 +108,16 @@ class TerminalModelTest {
         assertTrue(TerminalModel.historyOutdated(TerminalHistory(emptyMap(), emptyList()), screen))
         assertFalse(TerminalModel.historyOutdated(TerminalHistory(emptyMap(), listOf(emptyList())), screen))
     }
+
+    @Test
+    fun reloadedHistoryCountsRowsThatScrolledOffEvenWhenTheLoadIsCapped() {
+        val capped = TerminalHistory(emptyMap(), List(2_000) { emptyList() }, total = 5_000)
+        val later = TerminalHistory(emptyMap(), List(2_000) { emptyList() }, total = 5_030)
+        val short = TerminalHistory(emptyMap(), List(10) { emptyList() }, total = 10)
+        val longer = TerminalHistory(emptyMap(), List(25) { emptyList() }, total = 25)
+
+        assertEquals(30, TerminalModel.rowsAdded(capped, later))
+        assertEquals(15, TerminalModel.rowsAdded(short, longer))
+        assertEquals(2_000, TerminalModel.rowsAdded(null, later))
+    }
 }

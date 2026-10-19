@@ -300,7 +300,7 @@ fun TerminalScreen(
             connection.history()
                 .onSuccess { response ->
                     val loaded = TerminalHistory(response.styles.associateBy { it.id }, response.lines, response.total)
-                    if (!viewport.isLive) viewport.linesAboveLive += loaded.lines.size - (history?.lines?.size ?: 0)
+                    if (!viewport.isLive) viewport.linesAboveLive += TerminalModel.rowsAdded(history, loaded)
                     viewport.selection = null
                     history = loaded
                 }

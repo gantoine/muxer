@@ -54,6 +54,9 @@ object TerminalModel {
         return base.copy(lines = lines, cursor = frame.cursor ?: base.cursor, altScreen = frame.altScreen, historyRows = frame.historyRows)
     }
 
+    fun rowsAdded(previous: TerminalHistory?, loaded: TerminalHistory): Int =
+        if (previous == null) loaded.lines.size else maxOf(loaded.total - previous.total, loaded.lines.size - previous.lines.size)
+
     fun historyOutdated(history: TerminalHistory?, screen: TerminalScreen?): Boolean {
         val historyRows = screen?.historyRows
         return when {

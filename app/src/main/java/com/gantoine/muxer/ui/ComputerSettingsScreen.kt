@@ -191,7 +191,7 @@ fun ComputerSettingsScreen(
                             count = shown.size,
                             headline = "Port ${exposed.port}",
                             supporting = "${exposed.url} · reachable from your whole tailnet",
-                            onClick = { openInBrowser(context, exposed.url) },
+                            onClick = { if (OpenPorts.isWebLink(exposed.url)) openInBrowser(context, exposed.url) },
                             trailing = {
                                 TextButton(onClick = { stopExposing(exposed.port) }, enabled = exposed.port !in stopping) {
                                     Text("Stop")

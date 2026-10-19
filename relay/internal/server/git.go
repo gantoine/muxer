@@ -83,7 +83,7 @@ func (g *gitInfo) discover(ctx context.Context, s *Server, workspaces []cmux.Wor
 		g.discovered = nil
 		return
 	}
-	discovered, err := s.discoverPorts(ctx)
+	discovered, err := s.discoverPorts(ctx, g.bySurface)
 	if err != nil {
 		s.logger.Warn("could not find terminal ports", "error", err)
 		return

@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 fun AppSettingsScreen(app: MuxerApplication, onBack: () -> Unit) {
-    val settings by app.store.lockSettings.collectAsState(initial = null)
+    val settings by app.lock.settings.collectAsState()
     val activity = LocalActivity.current as? FragmentActivity
     val context = LocalContext.current
     val canAuthenticate = remember { DeviceAuth.canAuthenticate(context) }

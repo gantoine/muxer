@@ -235,6 +235,27 @@ func TestExposedPortsForgetEntriesRemovedOutsideMuxer(t *testing.T) {
 	}
 }
 
+func TestExposedPortsSurviveAServeStatusThatBrieflyLacksThem(t *testing.T) {
+	relay, ctx, conn := portRelay(t, 4000)
+	relay.tailnet.listen(4000, "127.0.0.1")
+	ask(t, ctx, conn, "1", "expose_port", 4000)
+	var target string
+	relay.tailnet.update(func(f *fakeTailnet) {
+		target = f.proxies[4000]
+		delete(f.proxies, 4000)
+	})
+
+	result := ask(t, ctx, conn, "2", "exposed_ports", 0)
+	if ports := result["data"].(map[string]any)["ports"].([]any); len(ports) != 0 {
+		t.Fatalf("a port tailscale doesn't serve must not be listed: %v", result)
+	}
+	relay.tailnet.update(func(f *fakeTailnet) { f.proxies[4000] = target })
+	result = ask(t, ctx, conn, "3", "unexpose_port", 4000)
+	if _, unserved := relay.tailnet.calls(); result["ok"] != true || len(unserved) != 1 {
+		t.Fatalf("Muxer must still own the port once it's served again: %v %v", result, unserved)
+	}
+}
+
 func askLinks(t *testing.T, ctx context.Context, conn *websocket.Conn, id, surfaceID string) map[string]any {
 	t.Helper()
 	_ = wsjson.Write(ctx, conn, map[string]any{"type": "port_links", "id": id, "surface_id": surfaceID})

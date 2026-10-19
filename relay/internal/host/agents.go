@@ -17,6 +17,7 @@ const (
 	agentMarker       = "muxer-agent:"
 	agentLookupLimit  = 5 * time.Second
 	agentLookupMaxAge = 5 * time.Minute
+	agentLookupRetry  = 30 * time.Second
 )
 
 func LoginShell() string {
@@ -30,9 +31,11 @@ type AgentFinder struct {
 	shell string
 	names []string
 
-	mu      sync.Mutex
-	found   []string
-	foundAt time.Time
+	mu       sync.Mutex
+	found    []string
+	foundAt  time.Time
+	failure  error
+	failedAt time.Time
 }
 
 func NewAgentFinder(shell string, names ...string) *AgentFinder {
@@ -45,14 +48,21 @@ func (f *AgentFinder) Installed(ctx context.Context) ([]string, error) {
 	if !f.foundAt.IsZero() && time.Since(f.foundAt) < agentLookupMaxAge {
 		return slices.Clone(f.found), nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, agentLookupLimit)
+	if !f.failedAt.IsZero() && time.Since(f.failedAt) < agentLookupRetry {
+		return nil, f.failure
+	}
+	lookup, cancel := context.WithTimeout(ctx, agentLookupLimit)
 	defer cancel()
-	command := exec.CommandContext(ctx, f.shell, "-lic", AgentLookupScript(f.names))
+	command := exec.CommandContext(lookup, f.shell, "-lic", AgentLookupScript(f.names))
 	command.WaitDelay = time.Second
 	output, err := command.Output()
 	if err != nil {
+		if ctx.Err() == nil {
+			f.failure, f.failedAt = err, time.Now()
+		}
 		return nil, err
 	}
+	f.failure, f.failedAt = nil, time.Time{}
 	f.found = FoundAgents(output, f.names)
 	f.foundAt = time.Now()
 	return slices.Clone(f.found), nil

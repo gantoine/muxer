@@ -172,7 +172,7 @@ func (s *Server) terminalPorts(ctx context.Context) (map[string][]int, error) {
 	}
 	var discovered map[string][]int
 	if needsDiscovery(reported, surfaceIDs) {
-		if discovered, err = s.discoverPorts(ctx); err != nil {
+		if discovered, err = s.discoverPorts(ctx, reported); err != nil {
 			s.logger.Warn("could not find terminal ports", "error", err)
 		}
 	}
@@ -214,21 +214,6 @@ func (state portState) serves(entry exposure) bool {
 func (s *Server) owns(state portState, port int) bool {
 	entry, found := s.exposures.find(port)
 	return found && state.serves(entry)
-}
-
-func (s *Server) resolvePort(ctx context.Context, port int) (PortLink, string, error) {
-	if err := validPort(port); err != nil {
-		return PortLink{}, "", err
-	}
-	if err := s.checkTerminalPort(ctx, port); err != nil {
-		return PortLink{}, "", err
-	}
-	state, err := s.readTailnet(ctx)
-	if err != nil {
-		return PortLink{}, "", err
-	}
-	s.exposures.load()
-	return s.linkFor(ctx, state, port)
 }
 
 func (s *Server) linkFor(ctx context.Context, state portState, port int) (PortLink, string, error) {
@@ -313,9 +298,20 @@ func exposeTarget(listeners []netip.Addr, port int) string {
 }
 
 func (s *Server) portLink(ctx context.Context, port int, expose bool) (PortLink, error) {
+	if err := validPort(port); err != nil {
+		return PortLink{}, err
+	}
+	if err := s.checkTerminalPort(ctx, port); err != nil {
+		return PortLink{}, err
+	}
 	s.exposures.mu.Lock()
 	defer s.exposures.mu.Unlock()
-	link, target, err := s.resolvePort(ctx, port)
+	state, err := s.readTailnet(ctx)
+	if err != nil {
+		return PortLink{}, err
+	}
+	s.exposures.load()
+	link, target, err := s.linkFor(ctx, state, port)
 	if err != nil || !expose || !link.NeedsExpose {
 		return link, err
 	}
@@ -367,7 +363,9 @@ func (s *Server) exposedPorts(ctx context.Context) ([]ExposedPort, error) {
 	}
 	s.exposures.load()
 	before := len(s.exposures.entries)
-	s.exposures.entries = slices.DeleteFunc(s.exposures.entries, func(entry exposure) bool { return !state.serves(entry) })
+	s.exposures.entries = slices.DeleteFunc(s.exposures.entries, func(entry exposure) bool {
+		return state.config.Uses(entry.Port) && !state.serves(entry)
+	})
 	if len(s.exposures.entries) != before {
 		if err := s.exposures.save(); err != nil {
 			s.logger.Warn("could not forget removed ports", "error", err)

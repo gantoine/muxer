@@ -39,7 +39,7 @@ func TestStartingAnAgentTaskRunsTheAgentOnThePromptInANewWorkspace(t *testing.T)
 	if !reflect.DeepEqual(relay.cmux.envWorkspaces, want) {
 		t.Fatalf("workspaces = %+v, want %+v", relay.cmux.envWorkspaces, want)
 	}
-	if commands := []string{`w2/t2 codex -- "$MUXER_TASK_PROMPT"`}; !reflect.DeepEqual(relay.cmux.commands, commands) {
+	if commands := []string{`w2/t2 codex -- "$MUXER_TASK_PROMPT"; unset MUXER_TASK_PROMPT`}; !reflect.DeepEqual(relay.cmux.commands, commands) {
 		t.Fatalf("the prompt must reach the agent through the environment, not the typed command: %q", relay.cmux.commands)
 	}
 }
@@ -63,7 +63,7 @@ func TestAgentTasksExpandTheHomeFolder(t *testing.T) {
 	if got := relay.cmux.envWorkspaces[0].cwd; got != filepath.Join(home, "app") {
 		t.Fatalf("cwd = %q", got)
 	}
-	if !reflect.DeepEqual(relay.cmux.commands, []string{`w2/t2 claude -- "$MUXER_TASK_PROMPT"`}) || !reflect.DeepEqual(relay.cmux.keys, []string{"t2:enter"}) {
+	if !reflect.DeepEqual(relay.cmux.commands, []string{`w2/t2 claude -- "$MUXER_TASK_PROMPT"; unset MUXER_TASK_PROMPT`}) || !reflect.DeepEqual(relay.cmux.keys, []string{"t2:enter"}) {
 		t.Fatalf("commands = %q, keys = %q", relay.cmux.commands, relay.cmux.keys)
 	}
 }
@@ -151,7 +151,7 @@ func TestAgentTasksCanStartInAnOpenWorkspace(t *testing.T) {
 	if len(relay.cmux.envWorkspaces) != 0 {
 		t.Fatalf("no workspace may open: %+v", relay.cmux.envWorkspaces)
 	}
-	if commands := []string{`w1/t5 claude -- "$MUXER_TASK_PROMPT"`}; !reflect.DeepEqual(relay.cmux.commands, commands) {
+	if commands := []string{`w1/t5 claude -- "$MUXER_TASK_PROMPT"; unset MUXER_TASK_PROMPT`}; !reflect.DeepEqual(relay.cmux.commands, commands) {
 		t.Fatalf("the prompt must reach the agent through the environment, not the typed command: %q", relay.cmux.commands)
 	}
 }
@@ -224,5 +224,14 @@ func TestTheWelcomeTellsWhetherTasksCanStartInAWorkspace(t *testing.T) {
 	_ = wsjson.Write(ctx, conn, map[string]any{"type": "start_agent_task", "id": "2", "agent": "claude", "workspace_id": "w1", "prompt": "hi"})
 	if result := resultFor(t, ctx, conn, "2"); errorCode(result) != "unsupported" {
 		t.Fatalf("got %v, want unsupported", result)
+	}
+}
+
+func TestTheTaskPromptIsForgottenInTheShellsOwnSyntax(t *testing.T) {
+	if got := taskCommand("claude", "/bin/zsh"); got != `claude -- "$MUXER_TASK_PROMPT"; unset MUXER_TASK_PROMPT` {
+		t.Fatalf("zsh command = %s", got)
+	}
+	if got := taskCommand("codex", "/opt/homebrew/bin/fish"); got != `codex -- "$MUXER_TASK_PROMPT"; set -e MUXER_TASK_PROMPT` {
+		t.Fatalf("fish command = %s", got)
 	}
 }

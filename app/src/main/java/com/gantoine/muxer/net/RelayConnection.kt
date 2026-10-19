@@ -8,6 +8,7 @@ import com.gantoine.muxer.protocol.AgentActivityMessage
 import com.gantoine.muxer.protocol.AgentMessage
 import com.gantoine.muxer.protocol.AgentMessagesMessage
 import com.gantoine.muxer.protocol.Approval
+import com.gantoine.muxer.protocol.Automation
 import com.gantoine.muxer.protocol.AutomationLog
 import com.gantoine.muxer.protocol.AutomationLogsResponse
 import com.gantoine.muxer.protocol.AutomationsResponse
@@ -314,9 +315,8 @@ class RelayConnection(
                 }
                 if (detached.surfaceId == attachment?.surfaceId) {
                     attachment = previous
-                    suspended = false
                     clearTerminalState()
-                    previous?.let { sendAttach(it) }
+                    if (previous == null) suspended = false else if (!suspended) sendAttach(previous)
                 }
                 _detached.tryEmit(detached)
             }
@@ -532,14 +532,14 @@ class RelayConnection(
 
     suspend fun automations(): Result<AutomationsResponse> = requestOr("automations", default = AutomationsResponse())
 
-    suspend fun setAutomationEnabled(ruleId: String, enabled: Boolean): Result<AutomationsResponse> =
-        requestOr(
+    suspend fun setAutomationEnabled(ruleId: String, enabled: Boolean): Result<Automation> =
+        requestAs(
             "set_automation_enabled",
             buildJsonObject {
                 put("rule_id", ruleId)
                 put("enabled", enabled)
             },
-            AutomationsResponse(),
+            "The computer didn't say how the rule changed.",
         )
 
     suspend fun automationLogs(ruleId: String? = null, limit: Int? = null): Result<List<AutomationLog>> =

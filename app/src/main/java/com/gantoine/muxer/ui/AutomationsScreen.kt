@@ -121,6 +121,9 @@ object AutomationListing {
     fun withEnabled(response: AutomationsResponse, ruleId: String, enabled: Boolean): AutomationsResponse =
         response.copy(rules = response.rules.map { if (it.id == ruleId) it.copy(enabled = enabled) else it })
 
+    fun withRule(response: AutomationsResponse, rule: Automation): AutomationsResponse =
+        response.copy(rules = response.rules.map { if (it.id == rule.id) rule else it })
+
     private fun count(n: Int, noun: String): String = if (n == 1) "1 $noun" else "$n ${noun}s"
 }
 
@@ -165,7 +168,7 @@ private class AutomationsModel(private val snackbar: SnackbarHostState) {
         toggling = toggling + rule.id
         response = AutomationListing.withEnabled(before, rule.id, enabled)
         target.setAutomationEnabled(rule.id, enabled)
-            .onSuccess { response = it }
+            .onSuccess { response = AutomationListing.withRule(response ?: before, it) }
             .onFailure {
                 response = AutomationListing.withEnabled(response ?: before, rule.id, rule.enabled)
                 snackbar.showSnackbar(it.message ?: "Couldn't change ${rule.id}.")

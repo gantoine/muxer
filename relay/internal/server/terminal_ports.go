@@ -13,13 +13,17 @@ func (s *Server) canDiscoverPorts() bool {
 	return s.options.ListeningProcesses != nil && s.options.ParentProcesses != nil && s.methods.supports(cmux.MethodTop)
 }
 
-func (s *Server) discoverPorts(ctx context.Context) (map[string][]int, error) {
+func (s *Server) discoverPorts(ctx context.Context, reported map[string]cmux.TerminalGit) (map[string][]int, error) {
 	if !s.canDiscoverPorts() {
 		return nil, nil
 	}
 	listening, err := s.options.ListeningProcesses(ctx)
-	if err != nil || len(listening) == 0 {
+	if err != nil {
 		return nil, err
+	}
+	listening = unreportedListeners(listening, reported)
+	if len(listening) == 0 {
+		return nil, nil
 	}
 	top, err := guarded(s, cmux.MethodTop, errMethodMissing, func() (cmux.Top, error) { return s.cmux.Top(ctx) })
 	if err != nil {
@@ -95,6 +99,22 @@ func needsDiscovery(reported map[string]cmux.TerminalGit, surfaceIDs []string) b
 		}
 	}
 	return false
+}
+
+func unreportedListeners(listening map[int][]int, reported map[string]cmux.TerminalGit) map[int][]int {
+	known := map[int]bool{}
+	for _, terminal := range reported {
+		for _, port := range terminal.ListeningPorts {
+			known[port] = true
+		}
+	}
+	unknown := map[int][]int{}
+	for pid, ports := range listening {
+		if slices.ContainsFunc(ports, func(port int) bool { return !known[port] }) {
+			unknown[pid] = ports
+		}
+	}
+	return unknown
 }
 
 func mergedPorts(reported []int, discovered []int) []int {
