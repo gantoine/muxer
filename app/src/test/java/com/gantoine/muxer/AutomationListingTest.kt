@@ -73,4 +73,13 @@ class AutomationListingTest {
         assertEquals(AutomationRateLimit(1.0, 1), rule.rateLimit)
         assertEquals("completed", rule.lastRun?.status)
     }
+
+    @Test
+    fun eventAndFieldNamesAreMarkedAsCode() {
+        val trigger = "When agent.auto_resume.sent"
+        assertEquals(listOf("agent.auto_resume.sent"), AutomationListing.codeRanges(trigger).map { trigger.substring(it) })
+        val condition = "only if workspace.title starts with \"api-\""
+        assertEquals(listOf("workspace.title"), AutomationListing.codeRanges(condition).map { condition.substring(it) })
+        assertEquals(emptyList<IntRange>(), AutomationListing.codeRanges("When any event"))
+    }
 }

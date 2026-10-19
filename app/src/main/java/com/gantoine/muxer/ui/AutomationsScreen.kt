@@ -37,6 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +71,10 @@ object AutomationListing {
     }
 
     fun trigger(rule: Automation): String = "When ${rule.trigger.ifBlank { "any event" }}"
+
+    private val identifier = Regex("""[A-Za-z_][\w-]*(\.[\w-]+)+""")
+
+    fun codeRanges(text: String): List<IntRange> = identifier.findAll(text).map { it.range }.toList()
 
     fun status(status: String): String = when (status) {
         "completed" -> "Done"
@@ -299,9 +306,9 @@ private fun AutomationRow(
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(rule.id, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            listOf(AutomationListing.trigger(rule), AutomationListing.actions(rule)).forEach { line ->
+            listOf(AutomationListing.trigger(rule), AutomationListing.actions(rule)).forEachIndexed { index, line ->
                 Text(
-                    line,
+                    if (index == 0) withCode(line) else AnnotatedString(line),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -429,7 +436,7 @@ private fun AutomationDetails(
         val whenRows = listOf(rule.trigger.ifBlank { "any event" }) + rule.conditions.map { "only if $it" } +
             listOfNotNull(rule.rateLimit?.let(AutomationListing::rateLimit))
         itemsIndexed(whenRows) { index, text ->
-            Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.groupedRow(groupedShape(index, whenRows.size)))
+            Text(withCode(text), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.groupedRow(groupedShape(index, whenRows.size)))
         }
 
         item { SectionLabel("Then") }
@@ -453,6 +460,19 @@ private fun AutomationDetails(
                     FullWidthMessage("Nothing yet. cmux keeps this log in memory, so it starts over when cmux restarts.")
                 }
                 else -> itemsIndexed(lines) { index, log -> LogRow(log, index, lines.size) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun withCode(text: String): AnnotatedString {
+    val background = MaterialTheme.colorScheme.surfaceContainerHigh
+    return remember(text, background) {
+        buildAnnotatedString {
+            append(text)
+            AutomationListing.codeRanges(text).forEach { range ->
+                addStyle(SpanStyle(fontFamily = FontFamily.Monospace, background = background), range.first, range.last + 1)
             }
         }
     }
