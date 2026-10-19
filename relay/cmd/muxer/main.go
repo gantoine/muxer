@@ -26,6 +26,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/host"
 	"github.com/gantoine/muxer/relay/internal/notify"
 	"github.com/gantoine/muxer/relay/internal/server"
+	"github.com/gantoine/muxer/relay/internal/tailnet"
 )
 
 var version = "dev"
@@ -128,7 +129,7 @@ func runServe(args []string) error {
 		}
 	}()
 
-	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample}, logger)
+	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, Tailnet: tailnet.CLI{}, Listeners: host.Listeners, ExposedPorts: paths.exposedPorts, RelayPort: relayPort(listen)}, logger)
 	categories := slices.Concat([]string{"notification"}, agents.EventCategories, server.WorkspaceEventCategories)
 	go events.NewStream(client, logger, cmux.EventFilter{Categories: categories}, hub, approvalTracker, agentTracker, relay).Run(ctx)
 	httpServer := &http.Server{

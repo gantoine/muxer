@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/server"
+	"github.com/gantoine/muxer/relay/internal/tailnet"
 )
 
 const (
@@ -30,11 +30,12 @@ const (
 )
 
 type paths struct {
-	dir     string
-	devices string
-	admin   string
-	plist   string
-	log     string
+	dir          string
+	devices      string
+	exposedPorts string
+	admin        string
+	plist        string
+	log          string
 }
 
 func statePaths() (paths, error) {
@@ -51,11 +52,12 @@ func statePaths() (paths, error) {
 		return paths{}, err
 	}
 	return paths{
-		dir:     dir,
-		devices: filepath.Join(dir, "devices.json"),
-		admin:   admin,
-		plist:   filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist"),
-		log:     filepath.Join(home, "Library", "Logs", "muxer.log"),
+		dir:          dir,
+		devices:      filepath.Join(dir, "devices.json"),
+		exposedPorts: filepath.Join(dir, "exposed-ports.json"),
+		admin:        admin,
+		plist:        filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist"),
+		log:          filepath.Join(home, "Library", "Logs", "muxer.log"),
 	}, nil
 }
 
@@ -99,17 +101,6 @@ func fixPossessive(name string) string {
 	return name
 }
 
-func tailscaleBinary() (string, error) {
-	if path, err := exec.LookPath("tailscale"); err == nil {
-		return path, nil
-	}
-	appBinary := "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-	if _, err := os.Stat(appBinary); err == nil {
-		return appBinary, nil
-	}
-	return "", errors.New("tailscale is not installed; install it from https://tailscale.com/download")
-}
-
 func listenPort(listen string) string {
 	_, port, err := net.SplitHostPort(listen)
 	if err != nil {
@@ -119,24 +110,21 @@ func listenPort(listen string) string {
 }
 
 func tailscaleRelayURL(listen string) (string, error) {
-	binary, err := tailscaleBinary()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	self, err := tailnet.CLI{}.Self(ctx)
+	if errors.Is(err, tailnet.ErrNotRunning) {
+		return "", errors.New("could not read `tailscale status`; is Tailscale running and logged in?")
+	}
 	if err != nil {
 		return "", err
 	}
-	output, err := exec.Command(binary, "status", "--json").Output()
-	if err != nil {
-		return "", errors.New("could not read `tailscale status`; is Tailscale running and logged in?")
-	}
-	var status struct {
-		Self struct {
-			DNSName string `json:"DNSName"`
-		} `json:"Self"`
-	}
-	if err := json.Unmarshal(output, &status); err != nil || status.Self.DNSName == "" {
-		return "", errors.New("could not find this computer's Tailscale name")
-	}
-	host := strings.TrimSuffix(status.Self.DNSName, ".")
-	return "https://" + host + ":" + listenPort(listen), nil
+	return "https://" + self.DNSName + ":" + listenPort(listen), nil
+}
+
+func relayPort(listen string) int {
+	port, _ := strconv.Atoi(listenPort(listen))
+	return port
 }
 
 func tailscaleServeCommand(listen string) string {
@@ -377,7 +365,7 @@ func runDoctor(args []string) error {
 	check(adminErr == nil, "relay is running", "relay is not running; run `muxer install`")
 
 	fmt.Println("Tailscale (optional)")
-	binary, tailscaleErr := tailscaleBinary()
+	binary, tailscaleErr := tailnet.Binary()
 	note(tailscaleErr == nil, "tailscale found",
 		"tailscale is not installed; make sure the phone reaches the relay over HTTPS another way")
 	if tailscaleErr == nil {

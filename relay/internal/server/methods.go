@@ -113,7 +113,11 @@ var requestMethods = map[string][]string{
 	"ungroup":                   {cmux.MethodGroupUngroup},
 	"create_workspace_in_group": {cmux.MethodGroupNewSpace},
 	"reconnect_workspace":       {cmux.MethodRemoteReconnect},
+	"port_link":                 {cmux.MethodTerminalGit},
+	"expose_port":               {cmux.MethodTerminalGit},
 }
+
+var portRequests = []string{"port_link", "expose_port", "unexpose_port", "exposed_ports"}
 
 func (s *Server) unsupportedRequests() []string {
 	missing := func(method string) bool { return !s.methods.supports(method) }
@@ -131,6 +135,13 @@ func (s *Server) unsupportedRequests() []string {
 	}
 	if s.options.HostUsage == nil {
 		kinds = append(kinds, "host_usage")
+	}
+	if s.options.Tailnet == nil || s.options.Listeners == nil {
+		for _, kind := range portRequests {
+			if !slices.Contains(kinds, kind) {
+				kinds = append(kinds, kind)
+			}
+		}
 	}
 	slices.Sort(kinds)
 	return kinds

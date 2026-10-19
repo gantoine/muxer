@@ -119,6 +119,12 @@ The app only talks to the relay over HTTPS and only accepts certificates from a 
 
 Then pair with that address using `muxer pair --url`.
 
+## Opening a terminal's ports
+
+When a terminal runs a server, its ports show up in the terminal list. Tap one to open it in your phone's browser at the computer's Tailscale name, for example `http://my-mac.tailnet.ts.net:3000`. The phone connects to it directly over your tailnet, not through the relay.
+
+A server that only listens on `127.0.0.1` can't be reached that way. The app asks before exposing it with `tailscale serve`, which gives it an `https://` address on the same port. **Every device on your tailnet can then reach it**, not just your phone. Stop exposing it from the computer's settings in the app. This only works with Tailscale for now.
+
 ## Custom alerts with cmux automations
 
 The phone shows every notification cmux posts, so a [cmux automation](https://github.com/manaflow-ai/cmux/blob/main/docs/automations.md) with a `notify` action also reaches your phone. For example, this rule in `~/.cmuxterm/automations.json` tells you when cmux types "continue" for an agent after an overload:
@@ -167,6 +173,7 @@ muxer uninstall        # stop the relay and remove it from login items
 - Each phone gets its own random token. The computer stores only a SHA-256 hash of it, in `~/Library/Application Support/muxer/devices.json` (mode 0600). The phone keeps it encrypted with a key in the Android Keystore.
 - Pairing codes are single-use, expire after 10 minutes, and stop working after 10 wrong guesses.
 - The relay listens on `127.0.0.1` only. Put it behind an HTTPS proxy that only your devices can reach, such as `tailscale serve`. **Never expose it** with `tailscale funnel`, an open port, or a tunnel without access control.
+- Opening a port that listens only on `127.0.0.1` runs `tailscale serve` for it, which makes it reachable from every device on your tailnet until you stop exposing it. The relay only does this for ports your cmux terminals listen on, never for its own port, and never uses `tailscale funnel`. It only removes serve entries it created.
 - Pairing, listing, and revoking go through a Unix socket that only your user can open, so none of them can be done over the network.
 - The relay only forwards the commands listed in the [relay protocol](DEVELOPMENT.md#relay-protocol). It is not a general cmux socket proxy.
 

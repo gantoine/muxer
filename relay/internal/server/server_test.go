@@ -489,6 +489,7 @@ type testRelay struct {
 	server    *Server
 	claudeDir string
 	codexDir  string
+	tailnet   *fakeTailnet
 }
 
 func startRelay(t *testing.T) testRelay {
@@ -504,7 +505,9 @@ func startRelay(t *testing.T) testRelay {
 	intervals.Chat = 10 * time.Millisecond
 	claudeDir := t.TempDir()
 	codexDir := t.TempDir()
+	tailnet := newFakeTailnet()
 	relay := New(fake, store, nil, Options{
+		Tailnet: tailnet, Listeners: tailnet.listenersOn, ExposedPorts: filepath.Join(t.TempDir(), "exposed-ports.json"), RelayPort: 8765,
 		MacName: "Test Mac", RelayVersion: "test", PollInterval: intervals, ClaudeConfigDir: claudeDir,
 		ClaudeSession: fake.runningClaude, CodexHome: codexDir,
 		HostUsage: func(context.Context) (host.Usage, error) {
@@ -513,7 +516,7 @@ func startRelay(t *testing.T) testRelay {
 	}, logger)
 	server := httptest.NewServer(relay.Handler())
 	t.Cleanup(server.Close)
-	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir}
+	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir, tailnet: tailnet}
 }
 
 func (r testRelay) pair(t *testing.T) string {
