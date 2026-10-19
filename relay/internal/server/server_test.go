@@ -551,7 +551,8 @@ func startRelayWith(t *testing.T, configure func(*Options)) testRelay {
 	tailnet := newFakeTailnet()
 	options := Options{
 		Tailnet: tailnet, Listeners: tailnet.listenersOn, ExposedPorts: filepath.Join(t.TempDir(), "exposed-ports.json"), RelayPort: 8765,
-		MacName: "Test Mac", RelayVersion: "test", PollInterval: intervals, ClaudeConfigDir: claudeDir,
+		AutomationsFile: filepath.Join(t.TempDir(), "automations.json"),
+		MacName:         "Test Mac", RelayVersion: "test", PollInterval: intervals, ClaudeConfigDir: claudeDir,
 		ClaudeSession: fake.runningClaude, CodexHome: codexDir,
 		HostUsage: func(context.Context) (host.Usage, error) {
 			return host.Usage{CPUPercent: 23.5, MemoryUsedBytes: 30 << 30, MemoryTotalBytes: 48 << 30}, nil

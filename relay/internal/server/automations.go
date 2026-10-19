@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -83,7 +85,7 @@ func (s *Server) automations(ctx context.Context) (automationsResponse, error) {
 		response.Rules = append(response.Rules, view)
 	}
 	if len(rules) == 0 {
-		if last := lastConfigReload(logs); last != nil && last.Status == "error" {
+		if last := lastConfigReload(logs); last != nil && last.Status == "error" && s.describesCurrentFile(*last) {
 			response.ConfigError = last.Detail
 		}
 	}
@@ -192,6 +194,26 @@ func lastRun(logs []cmux.AutomationLog, id string) *cmux.AutomationLog {
 		}
 	}
 	return nil
+}
+
+func defaultAutomationsFile() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".cmuxterm", "automations.json")
+}
+
+func (s *Server) describesCurrentFile(entry cmux.AutomationLog) bool {
+	info, err := os.Stat(s.options.AutomationsFile)
+	if err != nil {
+		return false
+	}
+	occurred, err := time.Parse(time.RFC3339, entry.OccurredAt)
+	if err != nil {
+		return true
+	}
+	return !occurred.Before(info.ModTime().Add(-time.Second))
 }
 
 func lastConfigReload(logs []cmux.AutomationLog) *cmux.AutomationLog {

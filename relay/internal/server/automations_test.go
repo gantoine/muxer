@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"slices"
 	"testing"
 	"time"
@@ -228,6 +229,7 @@ func TestReloadingABrokenFileExplainsTheEmptyList(t *testing.T) {
 	t.Cleanup(func() { automationReloadDelay = previous })
 	relay := automationRelay(t)
 	ctx := context.Background()
+	writeAutomationsFile(t, relay, time.Now().Add(-time.Minute))
 
 	broken, err := relay.server.reloadAutomations(ctx)
 	if err != nil {
@@ -246,6 +248,54 @@ func TestReloadingABrokenFileExplainsTheEmptyList(t *testing.T) {
 	}
 	if len(fixed.Rules) != 1 || fixed.ConfigError != "" || fixed.Rules[0].Actions[0].Summary != "Notify" {
 		t.Fatalf("a fixed file must list its rules without the old error: %+v", fixed)
+	}
+}
+
+func TestAnOldReloadErrorIsNotShownForAFileThatChangedOrIsGone(t *testing.T) {
+	relay := automationRelay(t)
+	ctx := context.Background()
+	relay.cmux.mu.Lock()
+	relay.cmux.automationRules = nil
+	relay.cmux.automationLogs = append(relay.cmux.automationLogs, cmux.AutomationLog{
+		OccurredAt: time.Now().Add(-time.Hour).UTC().Format(time.RFC3339), Event: "config.reload", Status: "error", Detail: "Unexpected character",
+	})
+	relay.cmux.mu.Unlock()
+
+	gone, err := relay.server.automations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gone.ConfigError != "" {
+		t.Fatalf("without a rules file there is nothing to fix: %+v", gone)
+	}
+
+	writeAutomationsFile(t, relay, time.Now())
+	changed, err := relay.server.automations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.ConfigError != "" {
+		t.Fatalf("an error from before the file last changed is stale: %+v", changed)
+	}
+
+	writeAutomationsFile(t, relay, time.Now().Add(-2*time.Hour))
+	broken, err := relay.server.automations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if broken.ConfigError != "Unexpected character" {
+		t.Fatalf("an error newer than the file must still show: %+v", broken)
+	}
+}
+
+func writeAutomationsFile(t *testing.T, relay testRelay, modified time.Time) {
+	t.Helper()
+	path := relay.server.options.AutomationsFile
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, modified, modified); err != nil {
+		t.Fatal(err)
 	}
 }
 

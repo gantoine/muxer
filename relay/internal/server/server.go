@@ -143,6 +143,7 @@ type Options struct {
 	ListeningProcesses func(ctx context.Context) (map[int][]int, error)
 	ParentProcesses    func(ctx context.Context) (map[int]int, error)
 	ExposedPorts       string
+	AutomationsFile    string
 	RelayPort          int
 }
 
@@ -176,6 +177,9 @@ func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, l
 	}
 	if options.ClaudeConfigDir == "" {
 		options.ClaudeConfigDir = claude.ConfigDir()
+	}
+	if options.AutomationsFile == "" {
+		options.AutomationsFile = defaultAutomationsFile()
 	}
 	if options.CodexHome == "" {
 		options.CodexHome = codex.HomeDir()
