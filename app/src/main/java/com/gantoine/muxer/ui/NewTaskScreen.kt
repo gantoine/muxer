@@ -16,8 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
@@ -49,6 +52,7 @@ import com.gantoine.muxer.model.NewTask
 import com.gantoine.muxer.model.WorkspaceListing
 import com.gantoine.muxer.net.ConnectionState
 import com.gantoine.muxer.protocol.RecentSession
+import com.gantoine.muxer.protocol.WorkspaceInfo
 import kotlinx.coroutines.launch
 
 private const val REQUEST = "start_agent_task"
@@ -58,6 +62,7 @@ private const val REQUEST = "start_agent_task"
 fun NewTaskScreen(
     app: MuxerApplication,
     macId: String,
+    initialWorkspaceId: String?,
     onBack: () -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
 ) {
@@ -74,7 +79,14 @@ fun NewTaskScreen(
     var folder by rememberSaveable { mutableStateOf("") }
     var prompt by rememberSaveable { mutableStateOf("") }
     var title by rememberSaveable { mutableStateOf("") }
+    var inWorkspace by rememberSaveable { mutableStateOf(initialWorkspaceId != null) }
+    var workspaceId by rememberSaveable { mutableStateOf(initialWorkspaceId) }
+    var picking by rememberSaveable { mutableStateOf(initialWorkspaceId == null) }
+    var search by rememberSaveable { mutableStateOf("") }
+    var startsInWorkspaces by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
+    val chosenWorkspace = workspaces?.firstOrNull { it.id == workspaceId }?.takeUnless { picking }
+    val usesWorkspace = inWorkspace && startsInWorkspaces
 
     suspend fun load() {
         val target = connection?.takeIf { it.supports(REQUEST) } ?: return
@@ -91,9 +103,16 @@ fun NewTaskScreen(
     fun start() {
         val target = connection ?: return
         val chosen = agent ?: return
+        val workspace = chosenWorkspace.takeIf { usesWorkspace }
+        if (usesWorkspace && workspace == null) return
         starting = true
         scope.launch {
-            target.startAgentTask(chosen, folder.trim(), prompt, title)
+            val started = if (workspace != null) {
+                target.startAgentTaskInWorkspace(chosen, workspace.id, prompt)
+            } else {
+                target.startAgentTask(chosen, folder.trim(), prompt, title)
+            }
+            started
                 .onSuccess { onOpenTerminal(it.workspaceId, it.surfaceId) }
                 .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't start the task.") }
             starting = false
@@ -102,6 +121,10 @@ fun NewTaskScreen(
 
     LaunchedEffect(connection, state is ConnectionState.Connected) {
         if (state is ConnectionState.Connected && installed == null) load()
+    }
+
+    LaunchedEffect(state) {
+        (state as? ConnectionState.Connected)?.let { startsInWorkspaces = it.has(NewTask.IN_WORKSPACE) }
     }
 
     Scaffold(
@@ -130,7 +153,39 @@ fun NewTaskScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ConnectionBanner(state)
-                    SectionLabel("Agent", top = 8.dp)
+                    if (startsInWorkspaces) {
+                        SectionLabel("Where", top = 8.dp)
+                        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = !inWorkspace,
+                                onClick = { inWorkspace = false },
+                                label = { Text("New workspace") },
+                                leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null, Modifier.size(18.dp)) },
+                            )
+                            FilterChip(
+                                selected = inWorkspace,
+                                onClick = { inWorkspace = true },
+                                label = { Text("Existing workspace") },
+                                leadingIcon = { Icon(Icons.Filled.Terminal, contentDescription = null, Modifier.size(18.dp)) },
+                            )
+                        }
+                        if (inWorkspace) {
+                            WorkspacePicker(
+                                workspaces = workspaces.orEmpty(),
+                                chosen = chosenWorkspace,
+                                search = search,
+                                macName = macName,
+                                onSearch = { search = it },
+                                onChange = { picking = true },
+                                onPick = { picked ->
+                                    workspaceId = picked.id
+                                    picking = false
+                                    search = ""
+                                },
+                            )
+                        }
+                    }
+                    SectionLabel("Agent", top = if (startsInWorkspaces) 20.dp else 8.dp)
                     if (found.isEmpty()) {
                         Text(
                             "Neither Claude Code nor Codex is installed on $macName.",
@@ -152,20 +207,22 @@ fun NewTaskScreen(
                             }
                         }
                     }
-                    SectionLabel("Folder")
-                    LabeledTextField(
-                        value = folder,
-                        onValueChange = { folder = it },
-                        label = "Folder on $macName",
-                        placeholder = "~/code/app",
-                        singleLine = true,
-                        leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    )
-                    val suggestions = NewTask.suggestions(folders, folder)
-                    suggestions.forEachIndexed { index, path ->
-                        FolderSuggestion(path, index, suggestions.size) { folder = WorkspaceListing.shortPath(path) }
+                    if (!usesWorkspace) {
+                        SectionLabel("Folder")
+                        LabeledTextField(
+                            value = folder,
+                            onValueChange = { folder = it },
+                            label = "Folder on $macName",
+                            placeholder = "~/code/app",
+                            singleLine = true,
+                            leadingIcon = { Icon(Icons.Filled.Folder, contentDescription = null) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
+                        val suggestions = NewTask.suggestions(folders, folder)
+                        suggestions.forEachIndexed { index, path ->
+                            FolderSuggestion(path, index, suggestions.size) { folder = WorkspaceListing.shortPath(path) }
+                        }
                     }
                     SectionLabel("Prompt")
                     LabeledTextField(
@@ -175,17 +232,24 @@ fun NewTaskScreen(
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp).padding(horizontal = 16.dp),
                     )
-                    LabeledTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = "Workspace name (optional)",
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    )
+                    if (!usesWorkspace) {
+                        LabeledTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            label = "Workspace name (optional)",
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        )
+                    }
+                    val ready = if (usesWorkspace) {
+                        NewTask.canStartIn(agent, chosenWorkspace, prompt)
+                    } else {
+                        NewTask.canStart(agent, folder, prompt)
+                    }
                     Button(
                         onClick = ::start,
-                        enabled = !starting && state is ConnectionState.Connected && NewTask.canStart(agent, folder, prompt),
+                        enabled = !starting && state is ConnectionState.Connected && ready,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth().height(56.dp),
                     ) {
                         if (starting) {
@@ -214,5 +278,80 @@ private fun FolderSuggestion(path: String, index: Int, count: Int, onPick: () ->
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun WorkspacePicker(
+    workspaces: List<WorkspaceInfo>,
+    chosen: WorkspaceInfo?,
+    search: String,
+    macName: String,
+    onSearch: (String) -> Unit,
+    onChange: () -> Unit,
+    onPick: (WorkspaceInfo) -> Unit,
+) {
+    if (chosen != null) {
+        WorkspaceChoice(chosen, index = 0, count = 1, onClickLabel = "Pick another workspace", onClick = onChange) {
+            Text("Change", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        return
+    }
+    if (workspaces.count(NewTask::canHost) > NewTask.SEARCHABLE_WORKSPACES) {
+        LabeledTextField(
+            value = search,
+            onValueChange = onSearch,
+            label = "Search workspaces",
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        )
+    }
+    val choices = NewTask.workspaceChoices(workspaces, search)
+    if (choices.isEmpty()) {
+        Text(
+            if (search.isNotBlank()) "No workspaces match \"${search.trim()}\"." else "No workspaces are open on $macName.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 28.dp),
+        )
+    }
+    choices.forEachIndexed { index, workspace ->
+        WorkspaceChoice(workspace, index, choices.size, onClickLabel = "Start the task here", onClick = { onPick(workspace) })
+    }
+}
+
+@Composable
+private fun WorkspaceChoice(
+    workspace: WorkspaceInfo,
+    index: Int,
+    count: Int,
+    onClickLabel: String,
+    onClick: () -> Unit,
+    trailing: @Composable () -> Unit = {},
+) {
+    Row(
+        Modifier.groupedRow(groupedShape(index, count), onClick = onClick, onClickLabel = onClickLabel),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        WorkspaceTile(workspace, size = 36.dp)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                workspace.title.ifBlank { "Untitled" },
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                workspace.currentDirectory?.let(WorkspaceListing::shortPath) ?: WorkspaceListing.subtitle(workspace),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        trailing()
     }
 }

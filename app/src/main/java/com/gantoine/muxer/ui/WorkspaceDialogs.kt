@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.gantoine.muxer.model.NewTask
 import com.gantoine.muxer.model.Organizing
 import com.gantoine.muxer.model.WorkspaceListing
 import com.gantoine.muxer.net.RelayConnection
@@ -66,6 +67,7 @@ internal fun WorkspaceDialogs(
     onOpen: (WorkspaceInfo) -> Unit,
     onNewTerminal: (WorkspaceInfo) -> Unit,
     onNewTask: () -> Unit,
+    onNewTaskIn: (WorkspaceInfo) -> Unit,
     onOpenCreated: (CreatedWorkspace) -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
     onOpenChecklist: (workspaceId: String) -> Unit,
@@ -108,6 +110,12 @@ internal fun WorkspaceDialogs(
             SheetAction(Icons.Filled.Add, "New terminal") {
                 dismiss()
                 onNewTerminal(workspace)
+            }
+            if (connection?.has(NewTask.IN_WORKSPACE) == true && NewTask.canHost(workspace)) {
+                SheetAction(Icons.Filled.RocketLaunch, "New task here") {
+                    dismiss()
+                    onNewTaskIn(workspace)
+                }
             }
             if (canPinShortcuts && workspace.terminals.isNotEmpty()) {
                 SheetAction(Icons.AutoMirrored.Filled.AddToHomeScreen, "Add to Home screen") {
