@@ -96,6 +96,7 @@ import com.gantoine.muxer.model.AgentStatus
 import com.gantoine.muxer.model.ApprovalReply
 import com.gantoine.muxer.model.WorkspaceListing
 import com.gantoine.muxer.net.ConnectionState
+import com.gantoine.muxer.net.NO_ATTACHMENT
 import com.gantoine.muxer.net.RelayException
 import com.gantoine.muxer.net.VisibleTerminal
 import com.gantoine.muxer.notifications.ConversationShortcuts
@@ -136,7 +137,8 @@ fun TerminalScreen(
         return
     }
     val state by connection.state.collectAsState()
-    val screen by connection.screen.collectAsState()
+    val attachedScreen by connection.screen.collectAsState()
+    val screen = attachedScreen?.takeIf { it.surfaceId == surfaceId }
     val workspaces by connection.workspaces.collectAsState()
     val chat by connection.chat.collectAsState()
     val chatImages = remember(connection) { RemoteImages { connection.chatImage(it).getOrNull() } }
@@ -252,14 +254,19 @@ fun TerminalScreen(
             if (app.connections.visibleTerminal.value === visible) app.connections.visibleTerminal.value = null
         }
     }
+    fun reclaimTerminal(): Boolean {
+        if (connection.attachedSurfaceId == surfaceId) return false
+        attachment = connection.attach(workspaceId, surfaceId, replacing = attachment)
+        return true
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
-        if (connection.attachedSurfaceId != surfaceId) attachment = connection.attach(workspaceId, surfaceId)
+        reclaimTerminal()
         app.connections.visibleTerminal.value = visible
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (app.connections.visibleTerminal.value === visible) app.connections.visibleTerminal.value = null
     }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { connection.resync() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (!reclaimTerminal()) connection.resync() }
     LaunchedEffect(connection) {
         connection.detached.collect { detached ->
             if (detached.surfaceId == surfaceId && !closing) {
@@ -680,7 +687,6 @@ private fun AgentPrompts(
 private const val FIT_SETTLE_MS = 300L
 private const val FILE_SEARCH_DELAY_MILLIS = 150L
 private const val HISTORY_RELOAD_MILLIS = 1_000L
-private const val NO_ATTACHMENT = -1L
 
 private val KEYS = listOf(
     "Esc" to "escape",

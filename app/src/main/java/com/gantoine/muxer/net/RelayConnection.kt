@@ -94,6 +94,8 @@ class RelayException(val code: String, message: String) : Exception(message) {
 
 val Throwable.isUnavailable: Boolean get() = this is RelayException && (isUnknownType || isUnsupported)
 
+const val NO_ATTACHMENT = -1L
+
 data class Attachment(val id: Long, val workspaceId: String, val surfaceId: String, val fit: Pair<Int, Int>? = null)
 
 class RelayConnection(
@@ -149,6 +151,7 @@ class RelayConnection(
     @Volatile private var socket: WebSocket? = null
     private var loop: Job? = null
     @Volatile private var attachment: Attachment? = null
+    private val attachments = mutableListOf<Attachment>()
     @Volatile private var suspended = false
 
     fun supports(type: String): Boolean = (state.value as? ConnectionState.Connected)?.supports(type) ?: true
@@ -293,10 +296,15 @@ class RelayConnection(
             }
             "detached" -> {
                 val detached = message.decode<DetachedMessage>()
+                val previous = synchronized(attachments) {
+                    attachments.removeAll { it.surfaceId == detached.surfaceId }
+                    attachments.lastOrNull()
+                }
                 if (detached.surfaceId == attachment?.surfaceId) {
-                    attachment = null
+                    attachment = previous
                     suspended = false
                     clearTerminalState()
+                    previous?.let { sendAttach(it) }
                 }
                 _detached.tryEmit(detached)
             }
@@ -361,8 +369,12 @@ class RelayConnection(
         },
     )
 
-    fun attach(workspaceId: String, surfaceId: String): Long {
+    fun attach(workspaceId: String, surfaceId: String, replacing: Long = NO_ATTACHMENT): Long {
         val next = Attachment(nextAttachmentId.incrementAndGet(), workspaceId, surfaceId)
+        synchronized(attachments) {
+            attachments.removeAll { it.id == replacing }
+            attachments += next
+        }
         if (attachment?.surfaceId != surfaceId) clearTerminalState()
         attachment = next
         suspended = false
@@ -389,13 +401,28 @@ class RelayConnection(
 
     fun setFit(fit: Pair<Int, Int>?) {
         val current = attachment ?: return
-        attachment = current.copy(fit = fit)
+        val fitted = current.copy(fit = fit)
+        attachment = fitted
+        synchronized(attachments) {
+            val index = attachments.indexOfFirst { it.id == current.id }
+            if (index >= 0) attachments[index] = fitted
+        }
         if (suspended) return
         if (fit == null) send("unfit") else send("fit", fitJson(fit))
     }
 
     fun detach(attachmentId: Long) {
+        val previous = synchronized(attachments) {
+            attachments.removeAll { it.id == attachmentId }
+            attachments.lastOrNull()
+        }
         if (attachment?.id != attachmentId) return
+        if (previous != null) {
+            if (attachment?.surfaceId != previous.surfaceId) clearTerminalState()
+            attachment = previous
+            if (!suspended) sendAttach(previous)
+            return
+        }
         attachment = null
         clearTerminalState()
         if (suspended) suspended = false else send("detach")
