@@ -22,7 +22,7 @@ On the Android emulator the computer is `http://10.0.2.2:18765`. Debug builds al
 
 ### End-to-end tests against cmux
 
-`relay/e2e` builds the relay, pairs a test phone and drives every feature against a running cmux: workspaces, groups, checklists, terminal input and history, notifications, keep awake, metrics, and agent approvals. Approvals are raised through `cmux hooks feed`, so no agent runs. The tests only touch workspaces named `e2e-…` and close them afterwards.
+`relay/e2e` builds the relay, pairs a test phone and drives every feature against a running cmux: workspaces, groups, checklists, terminal input and history, notifications, keep awake, metrics, and agent approvals. Approvals are raised through `cmux hooks feed`, so no agent runs. The tests only touch workspaces named `e2e-…` and close them afterwards. The automations test swaps `~/.cmuxterm/automations.json` for its own rules that never fire, then puts the original back byte for byte (or removes the file if there was none) and reloads cmux. Your own rules are off while it runs.
 
 ```sh
 cd relay && go test -tags e2e -count=1 ./e2e/
