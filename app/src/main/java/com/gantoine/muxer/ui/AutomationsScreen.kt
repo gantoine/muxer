@@ -272,8 +272,8 @@ private fun NoAutomations(macName: String) {
     val uriHandler = LocalUriHandler.current
     EmptyState(
         icon = Icons.Outlined.Bolt,
-        title = "No automations yet",
-        body = "cmux automations run when something happens, like an agent being resumed. " +
+        title = "No Automations",
+        body = "Automations run when something happens, like an agent being resumed. " +
             "Add rules to ${AutomationListing.FILE} on $macName and their notifications reach this phone.",
     ) {
         Button(onClick = { uriHandler.openUri(AutomationListing.GUIDE_URL) }) { Text("See how") }
