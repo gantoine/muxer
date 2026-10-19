@@ -33,6 +33,7 @@ private object Routes {
     const val SESSIONS = "mac/{macId}/sessions"
     const val NEW_TASK = "mac/{macId}/new-task"
     const val CHECKLIST = "mac/{macId}/workspace/{workspaceId}/checklist"
+    const val PORTS = "mac/{macId}/workspace/{workspaceId}/terminal/{surfaceId}/ports"
     const val METRICS = "mac/{macId}/metrics"
     const val AUTOMATIONS = "mac/{macId}/automations"
     const val AUTOMATION = "mac/{macId}/automations/{ruleId}"
@@ -46,6 +47,8 @@ private object Routes {
     fun sessions(macId: String) = "mac/${Uri.encode(macId)}/sessions"
     fun newTask(macId: String) = "mac/${Uri.encode(macId)}/new-task"
     fun checklist(macId: String, workspaceId: String) = "mac/${Uri.encode(macId)}/workspace/${Uri.encode(workspaceId)}/checklist"
+    fun ports(macId: String, workspaceId: String, surfaceId: String) =
+        "mac/${Uri.encode(macId)}/workspace/${Uri.encode(workspaceId)}/terminal/${Uri.encode(surfaceId)}/ports"
     fun metrics(macId: String) = "mac/${Uri.encode(macId)}/metrics"
     fun automations(macId: String) = "mac/${Uri.encode(macId)}/automations"
     fun automation(macId: String, ruleId: String) = "mac/${Uri.encode(macId)}/automations/${Uri.encode(ruleId)}"
@@ -130,6 +133,7 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onOpenChecklist = { navController.navigate(Routes.checklist(macId, it)) },
                 onNewTask = { navController.navigate(Routes.newTask(macId)) },
                 onOpenTerminal = { workspaceId, surfaceId -> navController.navigate(Routes.terminal(macId, workspaceId, surfaceId)) },
+                onOpenPorts = { workspaceId, surfaceId -> navController.navigate(Routes.ports(macId, workspaceId, surfaceId)) },
             )
         }
         composable(Routes.NEW_TASK, arguments = listOf(macArgument)) { entry ->
@@ -165,6 +169,22 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 app = app,
                 macId = entry.arg("macId"),
                 workspaceId = entry.arg("workspaceId"),
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(
+            Routes.PORTS,
+            arguments = listOf(
+                macArgument,
+                navArgument("workspaceId") { type = NavType.StringType },
+                navArgument("surfaceId") { type = NavType.StringType },
+            ),
+        ) { entry ->
+            OpenPortsScreen(
+                app = app,
+                macId = entry.arg("macId"),
+                workspaceId = entry.arg("workspaceId"),
+                surfaceId = entry.arg("surfaceId"),
                 onBack = { navController.popBackStack() },
             )
         }
@@ -230,11 +250,12 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
         ) { entry ->
             val macId = entry.arg("macId")
             val workspaceId = entry.arg("workspaceId")
+            val surfaceId = entry.arg("surfaceId")
             TerminalScreen(
                 app = app,
                 macId = macId,
                 workspaceId = workspaceId,
-                surfaceId = entry.arg("surfaceId"),
+                surfaceId = surfaceId,
                 initialMessage = entry.arg("message"),
                 initialImages = Routes.decodeImages(entry.arg("images")),
                 onBack = { navController.popBackStack() },
@@ -243,6 +264,7 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                         popUpTo(Routes.TERMINAL) { inclusive = true }
                     }
                 },
+                onOpenPorts = { navController.navigate(Routes.ports(macId, workspaceId, surfaceId)) },
             )
         }
         composable(

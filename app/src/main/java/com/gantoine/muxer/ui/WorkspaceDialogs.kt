@@ -53,7 +53,6 @@ internal sealed interface WorkspaceDialog {
     data class GroupColor(val group: WorkspaceGroupInfo) : WorkspaceDialog
     data class NewInGroup(val group: WorkspaceGroupInfo) : WorkspaceDialog
     data class Ungroup(val group: WorkspaceGroupInfo) : WorkspaceDialog
-    data class OpenPort(val port: Int) : WorkspaceDialog
 }
 
 @Composable
@@ -70,6 +69,7 @@ internal fun WorkspaceDialogs(
     onOpenCreated: (CreatedWorkspace) -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
     onOpenChecklist: (workspaceId: String) -> Unit,
+    onOpenPorts: (workspaceId: String, surfaceId: String) -> Unit,
     onPinShortcut: (WorkspaceInfo) -> Unit,
 ) {
     fun dismiss() = onDialog(null)
@@ -99,8 +99,11 @@ internal fun WorkspaceDialogs(
             val workspace = dialog.workspace
             SheetAction(Icons.AutoMirrored.Filled.OpenInNew, "Open") { dismiss(); onOpen(workspace) }
             val onlyTerminal = workspace.terminals.singleOrNull()
-            if (onlyTerminal != null && connection?.supports("port_link") == true) {
-                PortActions(onlyTerminal.listeningPorts) { port -> onDialog(WorkspaceDialog.OpenPort(port)) }
+            if (onlyTerminal != null && onlyTerminal.listeningPorts.isNotEmpty() && connection?.opensPortsInTailscale == true) {
+                OpenPortsAction {
+                    dismiss()
+                    onOpenPorts(workspace.id, onlyTerminal.id)
+                }
             }
             SheetAction(Icons.Filled.Add, "New terminal") {
                 dismiss()
@@ -238,19 +241,13 @@ internal fun WorkspaceDialogs(
             onDismiss = ::dismiss,
         )
         is WorkspaceDialog.PickTerminal -> ActionSheet(onDismiss = ::dismiss) {
-            val onPort: ((Int) -> Unit)? = if (connection?.supports("port_link") == true) {
-                { port -> onDialog(WorkspaceDialog.OpenPort(port)) }
-            } else {
-                null
-            }
             dialog.workspace.terminals.forEach { terminal ->
-                TerminalChoice(terminal, onPort = onPort) {
+                TerminalChoice(terminal) {
                     dismiss()
                     onOpenTerminal(dialog.workspace.id, terminal.id)
                 }
             }
         }
-        is WorkspaceDialog.OpenPort -> if (connection != null) PortSheet(connection, dialog.port, onDismiss = ::dismiss)
     }
 }
 

@@ -123,9 +123,16 @@ func validPort(port int) error {
 	return nil
 }
 
-func (s *Server) checkTerminalPort(ctx context.Context, port int) error {
+func (s *Server) checkRelayPort(port int) error {
 	if port == s.options.RelayPort {
 		return portError("port_not_allowed", "That port is the relay itself.")
+	}
+	return nil
+}
+
+func (s *Server) checkTerminalPort(ctx context.Context, port int) error {
+	if err := s.checkRelayPort(port); err != nil {
+		return err
 	}
 	ports, err := s.terminalPorts(ctx)
 	if err != nil {
@@ -221,6 +228,10 @@ func (s *Server) resolvePort(ctx context.Context, port int) (PortLink, string, e
 		return PortLink{}, "", err
 	}
 	s.exposures.load()
+	return s.linkFor(ctx, state, port)
+}
+
+func (s *Server) linkFor(ctx context.Context, state portState, port int) (PortLink, string, error) {
 	if s.owns(state, port) {
 		return PortLink{Port: port, URL: state.url("https", port), Exposed: true}, "", nil
 	}
@@ -248,6 +259,41 @@ func (s *Server) resolvePort(ctx context.Context, port int) (PortLink, string, e
 		return PortLink{Port: port, URL: state.url("http", port)}, "", nil
 	}
 	return PortLink{Port: port, URL: state.url("https", port), NeedsExpose: true}, exposeTarget(listeners, port), nil
+}
+
+type TerminalPortLink struct {
+	PortLink
+	Error *requestError `json:"error,omitempty"`
+}
+
+func (s *Server) terminalPortLinks(ctx context.Context, surfaceID string) ([]TerminalPortLink, error) {
+	ports, err := s.terminalPorts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.exposures.mu.Lock()
+	defer s.exposures.mu.Unlock()
+	state, err := s.readTailnet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.exposures.load()
+	links := []TerminalPortLink{}
+	for _, port := range ports[surfaceID] {
+		link := PortLink{Port: port}
+		err := s.checkRelayPort(port)
+		if err == nil {
+			link, _, err = s.linkFor(ctx, state, port)
+		}
+		var failure *requestError
+		if errors.As(err, &failure) {
+			link = PortLink{Port: port}
+		} else if err != nil {
+			return nil, err
+		}
+		links = append(links, TerminalPortLink{PortLink: link, Error: failure})
+	}
+	return links, nil
 }
 
 func (s *Server) proxiesToRelay(proxy string) bool {

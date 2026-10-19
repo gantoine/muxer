@@ -73,12 +73,6 @@ object WorkspaceListing {
 
     private fun branch(terminal: TerminalInfo): String? = terminal.gitBranch?.trim()?.takeIf { it.isNotEmpty() }
 
-    fun portsSummary(terminal: TerminalInfo): String? = when (terminal.listeningPorts.size) {
-        0 -> null
-        1 -> "port ${terminal.listeningPorts.first()}"
-        else -> "ports " + terminal.listeningPorts.joinToString(", ")
-    }
-
     fun matches(workspace: WorkspaceInfo, query: String): Boolean {
         val needle = query.trim()
         if (needle.isEmpty()) return true

@@ -93,6 +93,7 @@ var parallelRequests = map[string]bool{
 	"automations":      true,
 	"automation_logs":  true,
 	"port_link":        true,
+	"port_links":       true,
 	"expose_port":      true,
 	"unexpose_port":    true,
 	"exposed_ports":    true,
@@ -617,6 +618,18 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 			return nil, err
 		}
 		return map[string]any{"ports": ports}, nil
+	case "port_links":
+		var request struct {
+			SurfaceID string `json:"surface_id"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || request.SurfaceID == "" {
+			return nil, invalid("port_links needs surface_id.")
+		}
+		links, err := s.server.terminalPortLinks(ctx, request.SurfaceID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ports": links}, nil
 	case "exposed_ports":
 		ports, err := s.server.exposedPorts(ctx)
 		if err != nil {

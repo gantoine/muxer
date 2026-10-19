@@ -234,3 +234,53 @@ func TestExposedPortsForgetEntriesRemovedOutsideMuxer(t *testing.T) {
 		t.Fatalf("the user's replacement must not be removed: %v %v", result, unserved)
 	}
 }
+
+func askLinks(t *testing.T, ctx context.Context, conn *websocket.Conn, id, surfaceID string) map[string]any {
+	t.Helper()
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "port_links", "id": id, "surface_id": surfaceID})
+	return resultFor(t, ctx, conn, id)
+}
+
+func TestPortLinksDescribeEveryPortOfATerminal(t *testing.T) {
+	relay, ctx, conn := portRelay(t, 3000, 5173, 2222, 8765, 4000)
+	relay.tailnet.listen(3000, "::")
+	relay.tailnet.listen(5173, "127.0.0.1")
+	relay.tailnet.listen(2222, "127.0.0.1")
+	relay.tailnet.update(func(f *fakeTailnet) { f.tcpOnly[2222] = true })
+
+	result := askLinks(t, ctx, conn, "1", "t1")
+	links, _ := result["data"].(map[string]any)["ports"].([]any)
+	if result["ok"] != true || len(links) != 5 {
+		t.Fatalf("every port of the terminal must be listed: %v", result)
+	}
+	byPort := map[float64]map[string]any{}
+	for _, link := range links {
+		entry := link.(map[string]any)
+		byPort[entry["port"].(float64)] = entry
+	}
+	if byPort[3000]["url"] != "http://mac.tailnet.ts.net:3000" || byPort[3000]["error"] != nil {
+		t.Fatalf("a port open on every interface must be reachable: %v", byPort[3000])
+	}
+	if byPort[5173]["url"] != "https://mac.tailnet.ts.net:5173" || byPort[5173]["needs_expose"] != true {
+		t.Fatalf("a loopback port must ask to be exposed: %v", byPort[5173])
+	}
+	for port, code := range map[float64]string{2222: "serve_conflict", 8765: "port_not_allowed", 4000: "not_listening"} {
+		failure, _ := byPort[port]["error"].(map[string]any)
+		if failure["code"] != code || byPort[port]["url"] != "" {
+			t.Fatalf("port %v must fail with %s: %v", port, code, byPort[port])
+		}
+	}
+	if served, _ := relay.tailnet.calls(); len(served) != 0 {
+		t.Fatalf("listing ports must not expose any: %v", served)
+	}
+
+	result = askLinks(t, ctx, conn, "2", "gone")
+	if links, _ := result["data"].(map[string]any)["ports"].([]any); result["ok"] != true || len(links) != 0 {
+		t.Fatalf("an unknown terminal has no ports: %v", result)
+	}
+
+	relay.tailnet.update(func(f *fakeTailnet) { f.selfErr = tailnet.ErrNotRunning })
+	if result := askLinks(t, ctx, conn, "3", "t1"); errorCode(result) != "tailscale_offline" {
+		t.Fatalf("a logged out tailscale must fail the whole list: %v", result)
+	}
+}

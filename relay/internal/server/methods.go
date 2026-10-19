@@ -120,7 +120,7 @@ var requestMethods = map[string][]string{
 	"reload_automations":        {cmux.MethodAutomationReload, cmux.MethodAutomationList},
 }
 
-var portRequests = []string{"port_link", "expose_port", "unexpose_port", "exposed_ports"}
+var portRequests = []string{"port_link", "port_links", "expose_port", "unexpose_port", "exposed_ports"}
 
 func (s *Server) unsupportedRequests() []string {
 	missing := func(method string) bool { return !s.methods.supports(method) }
@@ -140,7 +140,7 @@ func (s *Server) unsupportedRequests() []string {
 		kinds = append(kinds, "host_usage")
 	}
 	if !s.methods.supports(cmux.MethodTerminalGit) && !s.canDiscoverPorts() {
-		kinds = append(kinds, "port_link", "expose_port")
+		kinds = append(kinds, "port_link", "port_links", "expose_port")
 	}
 	if s.options.Tailnet == nil || s.options.Listeners == nil {
 		for _, kind := range portRequests {
