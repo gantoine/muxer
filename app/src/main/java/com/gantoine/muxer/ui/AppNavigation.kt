@@ -30,6 +30,7 @@ private object Routes {
     const val SETTINGS = "mac/{macId}/settings"
     const val NOTIFICATIONS = "mac/{macId}/notifications"
     const val SESSIONS = "mac/{macId}/sessions"
+    const val NEW_TASK = "mac/{macId}/new-task"
     const val CHECKLIST = "mac/{macId}/workspace/{workspaceId}/checklist"
     const val METRICS = "mac/{macId}/metrics"
     const val TERMINAL = "terminal/{macId}/{workspaceId}/{surfaceId}?message={message}&images={images}"
@@ -40,6 +41,7 @@ private object Routes {
     fun settings(macId: String) = "mac/${Uri.encode(macId)}/settings"
     fun notifications(macId: String) = "mac/${Uri.encode(macId)}/notifications"
     fun sessions(macId: String) = "mac/${Uri.encode(macId)}/sessions"
+    fun newTask(macId: String) = "mac/${Uri.encode(macId)}/new-task"
     fun checklist(macId: String, workspaceId: String) = "mac/${Uri.encode(macId)}/workspace/${Uri.encode(workspaceId)}/checklist"
     fun metrics(macId: String) = "mac/${Uri.encode(macId)}/metrics"
     fun terminal(macId: String, workspaceId: String, surfaceId: String, message: String = "", images: List<Uri> = emptyList()) =
@@ -117,7 +119,21 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onOpenSettings = { navController.navigate(Routes.settings(macId)) },
                 onOpenNotifications = { navController.navigate(Routes.notifications(macId)) },
                 onOpenChecklist = { navController.navigate(Routes.checklist(macId, it)) },
+                onNewTask = { navController.navigate(Routes.newTask(macId)) },
                 onOpenTerminal = { workspaceId, surfaceId -> navController.navigate(Routes.terminal(macId, workspaceId, surfaceId)) },
+            )
+        }
+        composable(Routes.NEW_TASK, arguments = listOf(macArgument)) { entry ->
+            val macId = entry.arg("macId")
+            NewTaskScreen(
+                app = app,
+                macId = macId,
+                onBack = { navController.popBackStack() },
+                onOpenTerminal = { workspaceId, surfaceId ->
+                    navController.navigate(Routes.terminal(macId, workspaceId, surfaceId)) {
+                        popUpTo(Routes.NEW_TASK) { inclusive = true }
+                    }
+                },
             )
         }
         composable(Routes.NOTIFICATIONS, arguments = listOf(macArgument)) { entry ->

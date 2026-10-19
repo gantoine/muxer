@@ -21,6 +21,7 @@ import com.gantoine.muxer.protocol.DetachedMessage
 import com.gantoine.muxer.protocol.HistoryResponse
 import com.gantoine.muxer.protocol.HostUsage
 import com.gantoine.muxer.protocol.InputStateMessage
+import com.gantoine.muxer.protocol.InstalledAgentsResponse
 import com.gantoine.muxer.protocol.KeepAwakeMessage
 import com.gantoine.muxer.protocol.MacNotification
 import com.gantoine.muxer.protocol.NotificationMessage
@@ -549,6 +550,21 @@ class RelayConnection(
                 put("session_id", session.sessionId)
             },
             "The computer did not say where the session opened.",
+        )
+
+    suspend fun installedAgents(): Result<List<String>> =
+        requestOr("installed_agents", default = InstalledAgentsResponse()).map { it.agents }
+
+    suspend fun startAgentTask(agent: String, cwd: String, prompt: String, title: String): Result<CreatedWorkspace> =
+        requestAs(
+            "start_agent_task",
+            buildJsonObject {
+                put("agent", agent)
+                put("cwd", cwd)
+                put("prompt", prompt)
+                if (title.isNotBlank()) put("title", title.trim())
+            },
+            "The computer did not say where the task opened.",
         )
 
     suspend fun createTerminal(workspaceId: String): Result<String> =

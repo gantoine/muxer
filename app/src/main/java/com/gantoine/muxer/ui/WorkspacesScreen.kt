@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.Notifications
@@ -39,6 +40,7 @@ import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -142,6 +144,7 @@ fun WorkspacesScreen(
     onOpenSettings: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenChecklist: (workspaceId: String) -> Unit,
+    onNewTask: () -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
 ) {
     val connection = rememberConnection(app, macId)
@@ -184,6 +187,11 @@ fun WorkspacesScreen(
     val state by connection.collectOr(ConnectionState.Stopped) { it.state }
     val workspaces by connection.collectOr(null) { it.workspaces }
     val groups by connection.collectOr(emptyList()) { it.groups }
+    val canStartTasks = (state as? ConnectionState.Connected)?.supports("start_agent_task") ?: true
+
+    fun create() {
+        dialog = if (canStartTasks) WorkspaceDialog.New else WorkspaceDialog.Create
+    }
 
     Scaffold(
         topBar = {
@@ -228,10 +236,19 @@ fun WorkspacesScreen(
                         title = "No workspaces yet",
                         body = "Create one here and it opens in cmux on $macName.",
                     ) {
-                        Button(onClick = { dialog = WorkspaceDialog.Create }) {
-                            Icon(Icons.Filled.Add, contentDescription = null, Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("New workspace")
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (canStartTasks) {
+                                Button(onClick = onNewTask) {
+                                    Icon(Icons.Filled.RocketLaunch, contentDescription = null, Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("New task")
+                                }
+                            }
+                            FilledTonalButton(onClick = { dialog = WorkspaceDialog.Create }) {
+                                Icon(Icons.Filled.Add, contentDescription = null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("New workspace")
+                            }
                         }
                     }
                 }
@@ -302,7 +319,7 @@ fun WorkspacesScreen(
                 SearchDock(
                     query = query,
                     onQueryChange = { query = it },
-                    onCreate = { dialog = WorkspaceDialog.Create },
+                    onCreate = ::create,
                     modifier = Modifier.align(Alignment.BottomCenter).imePadding(),
                 )
             }
@@ -317,6 +334,7 @@ fun WorkspacesScreen(
         run = ::run,
         onOpen = ::open,
         onNewTerminal = ::openNewTerminal,
+        onNewTask = onNewTask,
         onOpenCreated = { created -> if (created.surfaceId.isNotEmpty()) onOpenTerminal(created.workspaceId, created.surfaceId) },
         onOpenTerminal = onOpenTerminal,
         onOpenChecklist = onOpenChecklist,
@@ -666,7 +684,7 @@ private fun SearchDock(query: String, onQueryChange: (String) -> Unit, onCreate:
                 modifier = Modifier.weight(1f),
             )
             FloatingActionButton(onClick = onCreate) {
-                Icon(Icons.Filled.Add, contentDescription = "New workspace")
+                Icon(Icons.Filled.Add, contentDescription = "New task or workspace")
             }
         }
     }

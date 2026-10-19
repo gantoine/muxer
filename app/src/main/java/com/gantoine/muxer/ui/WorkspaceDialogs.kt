@@ -19,7 +19,9 @@ import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +37,7 @@ import com.gantoine.muxer.protocol.WorkspaceGroupInfo
 import com.gantoine.muxer.protocol.WorkspaceInfo
 
 internal sealed interface WorkspaceDialog {
+    data object New : WorkspaceDialog
     data object Create : WorkspaceDialog
     data class Actions(val workspace: WorkspaceInfo, val group: WorkspaceGroupInfo? = null) : WorkspaceDialog
     data class Rename(val workspace: WorkspaceInfo) : WorkspaceDialog
@@ -61,6 +64,7 @@ internal fun WorkspaceDialogs(
     run: (suspend RelayConnection.() -> Result<*>) -> Unit,
     onOpen: (WorkspaceInfo) -> Unit,
     onNewTerminal: (WorkspaceInfo) -> Unit,
+    onNewTask: () -> Unit,
     onOpenCreated: (CreatedWorkspace) -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
     onOpenChecklist: (workspaceId: String) -> Unit,
@@ -70,6 +74,13 @@ internal fun WorkspaceDialogs(
 
     when (dialog) {
         null -> Unit
+        WorkspaceDialog.New -> ActionSheet(onDismiss = ::dismiss) {
+            SheetAction(Icons.Filled.RocketLaunch, "New task") {
+                dismiss()
+                onNewTask()
+            }
+            SheetAction(Icons.Filled.Terminal, "New workspace") { onDialog(WorkspaceDialog.Create) }
+        }
         WorkspaceDialog.Create -> TextInputDialog(
             title = "New workspace",
             fields = listOf("Name" to "", "Folder on the computer (optional)" to ""),
