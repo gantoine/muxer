@@ -425,6 +425,18 @@ data class HostUsage(val cpuPercent: Double = 0.0, val memoryUsedBytes: Long = 0
 data class PortLink(val port: Int, val url: String, val exposed: Boolean = false, val needsExpose: Boolean = false)
 
 @Serializable
+data class TerminalPortLink(
+    val port: Int,
+    val url: String = "",
+    val exposed: Boolean = false,
+    val needsExpose: Boolean = false,
+    val error: RequestError? = null,
+)
+
+@Serializable
+data class TerminalPortLinksResponse(val ports: List<TerminalPortLink> = emptyList())
+
+@Serializable
 data class ExposedPort(val port: Int, val url: String)
 
 @Serializable

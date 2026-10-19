@@ -9,8 +9,8 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class GitSummaryTest {
-    private fun terminal(branch: String? = null, dirty: Boolean? = null, ports: List<Int> = emptyList()) =
-        TerminalInfo(id = "t1", gitBranch = branch, gitDirty = dirty, listeningPorts = ports)
+    private fun terminal(branch: String? = null, dirty: Boolean? = null) =
+        TerminalInfo(id = "t1", gitBranch = branch, gitDirty = dirty)
 
     @Test
     fun summarisesEachTerminalsBranch() {
@@ -25,13 +25,6 @@ class GitSummaryTest {
         assertNull(WorkspaceListing.gitDescription(terminal()))
         assertEquals("main", WorkspaceListing.gitDescription(terminal(branch = "main", dirty = false)))
         assertEquals("feat/x, uncommitted changes", WorkspaceListing.gitDescription(terminal(branch = "feat/x", dirty = true)))
-    }
-
-    @Test
-    fun summarisesListeningPorts() {
-        assertNull(WorkspaceListing.portsSummary(terminal()))
-        assertEquals("port 3000", WorkspaceListing.portsSummary(terminal(ports = listOf(3000))))
-        assertEquals("ports 3000, 5173", WorkspaceListing.portsSummary(terminal(ports = listOf(3000, 5173))))
     }
 
     @Test

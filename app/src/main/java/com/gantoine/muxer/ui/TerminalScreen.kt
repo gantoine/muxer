@@ -129,6 +129,7 @@ fun TerminalScreen(
     initialMessage: String = "",
     initialImages: List<Uri> = emptyList(),
     onSwitchTerminal: ((surfaceId: String) -> Unit)? = null,
+    onOpenPorts: (() -> Unit)? = null,
 ) {
     val connections by app.connections.connectionsFlow.collectAsState()
     val connection = connections[macId]
@@ -603,13 +604,8 @@ fun TerminalScreen(
     when (val current = terminalDialog) {
         null -> Unit
         TerminalDialog.Panes -> ActionSheet(onDismiss = { terminalDialog = null }) {
-            val onPort: ((Int) -> Unit)? = if (connection.supports("port_link")) {
-                { port -> terminalDialog = TerminalDialog.OpenPort(port) }
-            } else {
-                null
-            }
             panes.forEach { pane ->
-                TerminalChoice(pane, selected = pane.id == surfaceId, onPort = onPort) {
+                TerminalChoice(pane, selected = pane.id == surfaceId) {
                     terminalDialog = null
                     if (pane.id != surfaceId) onSwitchTerminal?.invoke(pane.id)
                 }
@@ -623,10 +619,12 @@ fun TerminalScreen(
                 }
             }
         }
-        is TerminalDialog.OpenPort -> PortSheet(connection, current.port, onDismiss = { terminalDialog = null })
         TerminalDialog.Actions -> ActionSheet(onDismiss = { terminalDialog = null }) {
-            if (connection.supports("port_link")) {
-                PortActions(terminal?.listeningPorts.orEmpty()) { port -> terminalDialog = TerminalDialog.OpenPort(port) }
+            if (onOpenPorts != null && terminal?.listeningPorts.orEmpty().isNotEmpty() && connection.opensPortsInTailscale) {
+                OpenPortsAction {
+                    terminalDialog = null
+                    onOpenPorts()
+                }
             }
             SheetAction(Icons.Filled.DriveFileRenameOutline, "Rename") { terminalDialog = TerminalDialog.Rename }
             SheetAction(Icons.Filled.RestartAlt, "Restart") { terminalDialog = TerminalDialog.Restart }
@@ -677,7 +675,6 @@ private sealed interface TerminalDialog {
     data object Rename : TerminalDialog
     data object Restart : TerminalDialog
     data class Close(val force: Boolean) : TerminalDialog
-    data class OpenPort(val port: Int) : TerminalDialog
 }
 
 @Composable

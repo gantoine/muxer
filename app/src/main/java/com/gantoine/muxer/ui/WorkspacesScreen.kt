@@ -146,6 +146,7 @@ fun WorkspacesScreen(
     onOpenChecklist: (workspaceId: String) -> Unit,
     onNewTask: () -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
+    onOpenPorts: (workspaceId: String, surfaceId: String) -> Unit,
 ) {
     val connection = rememberConnection(app, macId)
     val macName = rememberMacName(app, macId, fallback = "Computer")
@@ -339,6 +340,7 @@ fun WorkspacesScreen(
         onOpenCreated = { created -> if (created.surfaceId.isNotEmpty()) onOpenTerminal(created.workspaceId, created.surfaceId) },
         onOpenTerminal = onOpenTerminal,
         onOpenChecklist = onOpenChecklist,
+        onOpenPorts = onOpenPorts,
         onPinShortcut = { workspace ->
             if (!app.shortcuts.requestPin(macId, macName, workspace)) {
                 scope.launch { snackbar.showSnackbar("Your home screen can't add this shortcut.") }
@@ -635,23 +637,17 @@ private fun rememberSettledLane(lane: String?): String? {
 private const val WORKING_HOLD_MILLIS = 8_000L
 
 @Composable
-private fun TerminalGitLine(terminal: TerminalInfo, showPorts: Boolean) {
-    val branch = WorkspaceListing.gitSummary(terminal)
-    val ports = if (showPorts) WorkspaceListing.portsSummary(terminal) else null
-    if (branch == null && ports == null) return
+private fun TerminalGitLine(terminal: TerminalInfo) {
+    val branch = WorkspaceListing.gitSummary(terminal) ?: return
     Row(verticalAlignment = Alignment.CenterVertically) {
-        if (branch != null) {
-            Icon(Icons.AutoMirrored.Filled.CallSplit, contentDescription = "Git branch", modifier = Modifier.size(14.dp))
-            Spacer(Modifier.width(4.dp))
-        }
+        Icon(Icons.AutoMirrored.Filled.CallSplit, contentDescription = "Git branch", modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(4.dp))
         Text(
-            listOfNotNull(branch, ports).joinToString(" · "),
+            branch,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.semantics {
-                contentDescription = listOfNotNull(WorkspaceListing.gitDescription(terminal), ports).joinToString(", ")
-            },
+            modifier = Modifier.semantics { contentDescription = WorkspaceListing.gitDescription(terminal).orEmpty() },
         )
     }
 }
@@ -695,10 +691,8 @@ private fun SearchDock(query: String, onQueryChange: (String) -> Unit, onCreate:
 internal fun TerminalChoice(
     terminal: TerminalInfo,
     selected: Boolean = false,
-    onPort: ((Int) -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    val portChips = onPort != null && terminal.listeningPorts.isNotEmpty()
     ListItem(
         headlineContent = { Text(terminal.title.ifBlank { "Terminal" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
@@ -708,8 +702,7 @@ internal fun TerminalChoice(
                 listOfNotNull(terminal.agentState, path)
                     .takeIf { it.isNotEmpty() }
                     ?.let { Text(it.joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                TerminalGitLine(terminal, showPorts = !portChips)
-                if (portChips) onPort?.let { PortChips(terminal.listeningPorts, it) }
+                TerminalGitLine(terminal)
             }
         },
         leadingContent = {

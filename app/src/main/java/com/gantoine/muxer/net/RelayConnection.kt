@@ -32,6 +32,8 @@ import com.gantoine.muxer.protocol.MacNotification
 import com.gantoine.muxer.protocol.NotificationMessage
 import com.gantoine.muxer.protocol.NotificationsResponse
 import com.gantoine.muxer.protocol.PortLink
+import com.gantoine.muxer.protocol.TerminalPortLink
+import com.gantoine.muxer.protocol.TerminalPortLinksResponse
 import com.gantoine.muxer.protocol.RecentSession
 import com.gantoine.muxer.protocol.RecentSessionsResponse
 import com.gantoine.muxer.protocol.RelayJson
@@ -107,7 +109,7 @@ data class Attachment(val id: Long, val workspaceId: String, val surfaceId: Stri
 
 class RelayConnection(
     private val macId: String,
-    private val baseUrl: String,
+    val baseUrl: String,
     private val token: String,
     private val client: OkHttpClient,
     private val scope: CoroutineScope,
@@ -549,8 +551,8 @@ class RelayConnection(
 
     suspend fun reloadAutomations(): Result<AutomationsResponse> = requestOr("reload_automations", default = AutomationsResponse())
 
-    suspend fun portLink(port: Int): Result<PortLink> =
-        requestAs("port_link", buildJsonObject { put("port", port) }, "The computer sent no link for that port.")
+    suspend fun terminalPortLinks(surfaceId: String): Result<List<TerminalPortLink>> =
+        requestOr("port_links", buildJsonObject { put("surface_id", surfaceId) }, TerminalPortLinksResponse()).map { it.ports }
 
     suspend fun exposePort(port: Int): Result<PortLink> =
         requestAs("expose_port", buildJsonObject { put("port", port) }, "The computer sent no link for that port.")
