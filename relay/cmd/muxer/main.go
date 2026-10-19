@@ -128,7 +128,7 @@ func runServe(args []string) error {
 		}
 	}()
 
-	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample}, logger)
+	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, InstalledAgents: host.NewAgentFinder(host.LoginShell(), server.TaskAgents...).Installed}, logger)
 	categories := slices.Concat([]string{"notification"}, agents.EventCategories, server.WorkspaceEventCategories)
 	go events.NewStream(client, logger, cmux.EventFilter{Categories: categories}, hub, approvalTracker, agentTracker, relay).Run(ctx)
 	httpServer := &http.Server{

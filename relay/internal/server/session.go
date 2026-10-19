@@ -78,16 +78,18 @@ type session struct {
 }
 
 var parallelRequests = map[string]bool{
-	"history":         true,
-	"chat_image":      true,
-	"chat_files":      true,
-	"recent_sessions": true,
-	"resume_session":  true,
-	"notifications":   true,
-	"keep_awake":      true,
-	"top":             true,
-	"host_usage":      true,
-	"vms":             true,
+	"history":          true,
+	"chat_image":       true,
+	"chat_files":       true,
+	"recent_sessions":  true,
+	"resume_session":   true,
+	"installed_agents": true,
+	"start_agent_task": true,
+	"notifications":    true,
+	"keep_awake":       true,
+	"top":              true,
+	"host_usage":       true,
+	"vms":              true,
 }
 
 func newSession(server *Server, conn *websocket.Conn, device devices.Device) *session {
@@ -418,6 +420,18 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 			return nil, err
 		}
 		return resumed, nil
+	case "installed_agents":
+		return map[string]any{"agents": s.server.installedAgents(ctx)}, nil
+	case "start_agent_task":
+		request, err := parseAgentTask(raw)
+		if err != nil {
+			return nil, err
+		}
+		started, err := s.server.startAgentTask(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		return started, nil
 	case "create_terminal":
 		var request struct {
 			WorkspaceID string `json:"workspace_id"`

@@ -27,6 +27,7 @@ import (
 
 type fakeCmux struct {
 	mu              sync.Mutex
+	envWorkspaces   []envWorkspace
 	inputs          []string
 	keys            []string
 	viewports       []string
@@ -343,6 +344,18 @@ func (f *fakeCmux) ClearViewport(context.Context, string, string, string, int) e
 }
 
 func (f *fakeCmux) CreateWorkspace(context.Context, string, string) (cmux.CreatedWorkspace, error) {
+	return cmux.CreatedWorkspace{WorkspaceID: "w2", SurfaceID: "t2"}, nil
+}
+
+type envWorkspace struct {
+	title, cwd string
+	env        map[string]string
+}
+
+func (f *fakeCmux) CreateWorkspaceWithEnv(_ context.Context, title, cwd string, env map[string]string) (cmux.CreatedWorkspace, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.envWorkspaces = append(f.envWorkspaces, envWorkspace{title: title, cwd: cwd, env: env})
 	return cmux.CreatedWorkspace{WorkspaceID: "w2", SurfaceID: "t2"}, nil
 }
 func (f *fakeCmux) CloseWorkspace(context.Context, string, bool) error    { return nil }
