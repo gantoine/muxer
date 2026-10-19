@@ -89,6 +89,7 @@ sealed interface ConnectionState {
     data object Connecting : ConnectionState
     data class Connected(val welcome: Welcome) : ConnectionState {
         fun supports(type: String): Boolean = type !in welcome.unsupported
+        fun has(feature: String): Boolean = feature in welcome.features && supports(feature)
     }
     data class Disconnected(val reason: String) : ConnectionState
     data object Unauthorized : ConnectionState
@@ -164,6 +165,8 @@ class RelayConnection(
     @Volatile private var suspended = false
 
     fun supports(type: String): Boolean = (state.value as? ConnectionState.Connected)?.supports(type) ?: true
+
+    fun has(feature: String): Boolean = (state.value as? ConnectionState.Connected)?.has(feature) == true
 
     fun start() {
         if (loop?.isActive == true) return
@@ -634,6 +637,17 @@ class RelayConnection(
                 put("cwd", cwd)
                 put("prompt", prompt)
                 if (title.isNotBlank()) put("title", title.trim())
+            },
+            "The computer did not say where the task opened.",
+        )
+
+    suspend fun startAgentTaskInWorkspace(agent: String, workspaceId: String, prompt: String): Result<CreatedWorkspace> =
+        requestAs(
+            "start_agent_task",
+            buildJsonObject {
+                put("agent", agent)
+                put("workspace_id", workspaceId)
+                put("prompt", prompt)
             },
             "The computer did not say where the task opened.",
         )

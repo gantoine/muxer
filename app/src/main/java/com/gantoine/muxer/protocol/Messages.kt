@@ -22,6 +22,7 @@ data class Welcome(
     val deviceId: String,
     val notificationSeq: Long = 0,
     val unsupported: List<String> = emptyList(),
+    val features: List<String> = emptyList(),
 )
 
 @Serializable

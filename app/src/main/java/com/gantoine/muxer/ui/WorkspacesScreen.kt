@@ -145,6 +145,7 @@ fun WorkspacesScreen(
     onOpenNotifications: () -> Unit,
     onOpenChecklist: (workspaceId: String) -> Unit,
     onNewTask: () -> Unit,
+    onNewTaskIn: (workspaceId: String) -> Unit,
     onOpenTerminal: (workspaceId: String, surfaceId: String) -> Unit,
     onOpenPorts: (workspaceId: String, surfaceId: String) -> Unit,
 ) {
@@ -337,6 +338,7 @@ fun WorkspacesScreen(
         onOpen = ::open,
         onNewTerminal = ::openNewTerminal,
         onNewTask = onNewTask,
+        onNewTaskIn = { onNewTaskIn(it.id) },
         onOpenCreated = { created -> if (created.surfaceId.isNotEmpty()) onOpenTerminal(created.workspaceId, created.surfaceId) },
         onOpenTerminal = onOpenTerminal,
         onOpenChecklist = onOpenChecklist,

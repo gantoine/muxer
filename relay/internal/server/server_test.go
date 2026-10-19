@@ -28,6 +28,7 @@ import (
 type fakeCmux struct {
 	mu              sync.Mutex
 	envWorkspaces   []envWorkspace
+	envTerminals    []envTerminal
 	inputs          []string
 	keys            []string
 	viewports       []string
@@ -367,6 +368,25 @@ func (f *fakeCmux) CloseWorkspace(context.Context, string, bool) error    { retu
 func (f *fakeCmux) RenameWorkspace(context.Context, string, string) error { return nil }
 func (f *fakeCmux) CreateTerminal(context.Context, string) (string, error) {
 	return "t3", nil
+}
+
+type envTerminal struct {
+	workspaceID, cwd string
+	env              map[string]string
+}
+
+func (f *fakeCmux) CreateTerminalWithEnv(_ context.Context, workspaceID, cwd string, env map[string]string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.envTerminals = append(f.envTerminals, envTerminal{workspaceID: workspaceID, cwd: cwd, env: env})
+	if f.workspaceList != nil {
+		for index := range f.workspaceList.Workspaces {
+			if workspace := &f.workspaceList.Workspaces[index]; workspace.ID == workspaceID {
+				workspace.Terminals = append(workspace.Terminals, cmux.Terminal{ID: "t5"})
+			}
+		}
+	}
+	return "t5", nil
 }
 
 func (f *fakeCmux) CloseTerminal(_ context.Context, workspaceID, surfaceID string, force bool) error {

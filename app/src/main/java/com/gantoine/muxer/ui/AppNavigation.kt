@@ -31,7 +31,7 @@ private object Routes {
     const val SETTINGS = "mac/{macId}/settings"
     const val NOTIFICATIONS = "mac/{macId}/notifications"
     const val SESSIONS = "mac/{macId}/sessions"
-    const val NEW_TASK = "mac/{macId}/new-task"
+    const val NEW_TASK = "mac/{macId}/new-task?workspace={workspace}"
     const val CHECKLIST = "mac/{macId}/workspace/{workspaceId}/checklist"
     const val PORTS = "mac/{macId}/workspace/{workspaceId}/terminal/{surfaceId}/ports"
     const val METRICS = "mac/{macId}/metrics"
@@ -45,7 +45,7 @@ private object Routes {
     fun settings(macId: String) = "mac/${Uri.encode(macId)}/settings"
     fun notifications(macId: String) = "mac/${Uri.encode(macId)}/notifications"
     fun sessions(macId: String) = "mac/${Uri.encode(macId)}/sessions"
-    fun newTask(macId: String) = "mac/${Uri.encode(macId)}/new-task"
+    fun newTask(macId: String, workspaceId: String = "") = "mac/${Uri.encode(macId)}/new-task?workspace=${Uri.encode(workspaceId)}"
     fun checklist(macId: String, workspaceId: String) = "mac/${Uri.encode(macId)}/workspace/${Uri.encode(workspaceId)}/checklist"
     fun ports(macId: String, workspaceId: String, surfaceId: String) =
         "mac/${Uri.encode(macId)}/workspace/${Uri.encode(workspaceId)}/terminal/${Uri.encode(surfaceId)}/ports"
@@ -132,15 +132,23 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onOpenNotifications = { navController.navigate(Routes.notifications(macId)) },
                 onOpenChecklist = { navController.navigate(Routes.checklist(macId, it)) },
                 onNewTask = { navController.navigate(Routes.newTask(macId)) },
+                onNewTaskIn = { workspaceId -> navController.navigate(Routes.newTask(macId, workspaceId)) },
                 onOpenTerminal = { workspaceId, surfaceId -> navController.navigate(Routes.terminal(macId, workspaceId, surfaceId)) },
                 onOpenPorts = { workspaceId, surfaceId -> navController.navigate(Routes.ports(macId, workspaceId, surfaceId)) },
             )
         }
-        composable(Routes.NEW_TASK, arguments = listOf(macArgument)) { entry ->
+        composable(
+            Routes.NEW_TASK,
+            arguments = listOf(
+                macArgument,
+                navArgument("workspace") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
             val macId = entry.arg("macId")
             NewTaskScreen(
                 app = app,
                 macId = macId,
+                initialWorkspaceId = entry.arg("workspace").ifEmpty { null },
                 onBack = { navController.popBackStack() },
                 onOpenTerminal = { workspaceId, surfaceId ->
                     navController.navigate(Routes.terminal(macId, workspaceId, surfaceId)) {

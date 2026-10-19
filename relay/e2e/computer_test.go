@@ -63,3 +63,11 @@ func TestAgentTasksCheckTheFolderBeforeOpeningAWorkspace(t *testing.T) {
 		t.Fatalf("a missing folder must be refused: %v", failure)
 	}
 }
+
+func TestAgentTasksRefuseAnUnknownWorkspace(t *testing.T) {
+	p := connect(t)
+	failure := p.failure("start_agent_task", map[string]any{"agent": "claude", "workspace_id": "00000000-0000-0000-0000-000000000000", "prompt": "hi"})
+	if failure.Code != "not_found" {
+		t.Fatalf("an unknown workspace must be refused: %v", failure)
+	}
+}
