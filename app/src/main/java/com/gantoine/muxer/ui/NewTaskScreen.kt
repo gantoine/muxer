@@ -74,7 +74,6 @@ fun NewTaskScreen(
     val scope = rememberCoroutineScope()
     var installed by remember { mutableStateOf<List<String>?>(null) }
     var loadFailure by remember { mutableStateOf<Throwable?>(null) }
-    var sessions by remember { mutableStateOf(emptyList<RecentSession>()) }
     var agent by rememberSaveable { mutableStateOf<String?>(null) }
     var folder by rememberSaveable { mutableStateOf("") }
     var prompt by rememberSaveable { mutableStateOf("") }
@@ -82,6 +81,7 @@ fun NewTaskScreen(
     var inWorkspace by rememberSaveable { mutableStateOf(initialWorkspaceId != null) }
     var workspaceId by rememberSaveable { mutableStateOf(initialWorkspaceId) }
     var picking by rememberSaveable { mutableStateOf(initialWorkspaceId == null) }
+    var choosingWhere by rememberSaveable { mutableStateOf(initialWorkspaceId == null) }
     var search by rememberSaveable { mutableStateOf("") }
     var startsInWorkspaces by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
@@ -97,7 +97,6 @@ fun NewTaskScreen(
                 if (agent !in found) agent = NewTask.agents.firstOrNull { it in found }
             }
             .onFailure { loadFailure = it }
-        if (target.supports("recent_sessions")) target.recentSessions().onSuccess { sessions = it }
     }
 
     fun start() {
@@ -147,15 +146,14 @@ fun NewTaskScreen(
                     scope.launch { load() }
                 },
             ) { found ->
-                val folders = remember(workspaces, sessions) { NewTask.folders(workspaces.orEmpty(), sessions) }
                 Column(
                     Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ConnectionBanner(state)
                     if (startsInWorkspaces) {
-                        SectionLabel("Where", top = 8.dp)
-                        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TaskLabel("Where", first = true)
+                        if (choosingWhere) Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
                                 selected = !inWorkspace,
                                 onClick = { inWorkspace = false },
@@ -176,7 +174,10 @@ fun NewTaskScreen(
                                 search = search,
                                 macName = macName,
                                 onSearch = { search = it },
-                                onChange = { picking = true },
+                                onChange = {
+                                    picking = true
+                                    choosingWhere = true
+                                },
                                 onPick = { picked ->
                                     workspaceId = picked.id
                                     picking = false
@@ -185,13 +186,13 @@ fun NewTaskScreen(
                             )
                         }
                     }
-                    SectionLabel("Agent", top = if (startsInWorkspaces) 20.dp else 8.dp)
+                    TaskLabel("Agent", first = !startsInWorkspaces)
                     if (found.isEmpty()) {
                         Text(
                             "Neither Claude Code nor Codex is installed on $macName.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 28.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp),
                         )
                     } else {
                         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -208,7 +209,7 @@ fun NewTaskScreen(
                         }
                     }
                     if (!usesWorkspace) {
-                        SectionLabel("Folder")
+                        TaskLabel("Folder")
                         LabeledTextField(
                             value = folder,
                             onValueChange = { folder = it },
@@ -219,12 +220,8 @@ fun NewTaskScreen(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         )
-                        val suggestions = NewTask.suggestions(folders, folder)
-                        suggestions.forEachIndexed { index, path ->
-                            FolderSuggestion(path, index, suggestions.size) { folder = WorkspaceListing.shortPath(path) }
-                        }
                     }
-                    SectionLabel("Prompt")
+                    TaskLabel("Prompt")
                     LabeledTextField(
                         value = prompt,
                         onValueChange = { prompt = it },
@@ -265,20 +262,13 @@ fun NewTaskScreen(
 }
 
 @Composable
-private fun FolderSuggestion(path: String, index: Int, count: Int, onPick: () -> Unit) {
-    Row(
-        Modifier.groupedRow(groupedShape(index, count), onClick = onPick),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(16.dp))
-        Text(
-            WorkspaceListing.shortPath(path),
-            style = MaterialTheme.typography.bodyLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+private fun TaskLabel(text: String, first: Boolean = false) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = if (first) 8.dp else 16.dp),
+    )
 }
 
 @Composable

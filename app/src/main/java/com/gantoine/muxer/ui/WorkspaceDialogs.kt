@@ -112,7 +112,7 @@ internal fun WorkspaceDialogs(
                 onNewTerminal(workspace)
             }
             if (connection?.has(NewTask.IN_WORKSPACE) == true && NewTask.canHost(workspace)) {
-                SheetAction(Icons.Filled.RocketLaunch, "New task here") {
+                SheetAction(Icons.Filled.RocketLaunch, "New task") {
                     dismiss()
                     onNewTaskIn(workspace)
                 }
