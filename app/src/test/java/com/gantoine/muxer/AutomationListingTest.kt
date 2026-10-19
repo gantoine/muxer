@@ -21,13 +21,15 @@ class AutomationListingTest {
 
     @Test
     fun summaryNamesTheTriggerAndTheFirstAction() {
-        assertEquals("When agent.auto_resume.sent · Notify “Agent resumed” and 1 more action", AutomationListing.summary(resume))
-        assertEquals("When any event · 3 actions", AutomationListing.summary(Automation(id = "bare", actionCount = 3)))
+        assertEquals("When agent.auto_resume.sent", AutomationListing.trigger(resume))
+        assertEquals("Notify “Agent resumed” and 1 more action", AutomationListing.actions(resume))
+        assertEquals("When any event", AutomationListing.trigger(Automation(id = "bare", actionCount = 3)))
+        assertEquals("3 actions", AutomationListing.actions(Automation(id = "bare", actionCount = 3)))
     }
 
     @Test
     fun lastRunSaysWhenNothingRan() {
-        assertEquals("Hasn't run since cmux started", AutomationListing.lastRun(resume))
+        assertEquals("No run since cmux started", AutomationListing.lastRun(resume))
         val failed = resume.copy(lastRun = AutomationLog(occurredAt = "bad", status = "error"))
         assertEquals("Ran · Failed", AutomationListing.lastRun(failed))
         assertTrue(AutomationListing.failed(failed.lastRun!!))

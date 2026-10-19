@@ -67,7 +67,7 @@ object AutomationListing {
         }
     }
 
-    fun summary(rule: Automation): String = "When ${rule.trigger.ifBlank { "any event" }} · ${actions(rule)}"
+    fun trigger(rule: Automation): String = "When ${rule.trigger.ifBlank { "any event" }}"
 
     fun status(status: String): String = when (status) {
         "completed" -> "Done"
@@ -83,7 +83,7 @@ object AutomationListing {
     fun failed(log: AutomationLog): Boolean = log.status == "error"
 
     fun lastRun(rule: Automation, now: Instant = Instant.now()): String {
-        val run = rule.lastRun ?: return "Hasn't run since cmux started"
+        val run = rule.lastRun ?: return "No run since cmux started"
         val time = WorkspaceListing.time(parseInstant(run.occurredAt), now)
         return listOfNotNull(time?.let { "Last ran $it" } ?: "Ran", status(run.status)).joinToString(" · ")
     }
@@ -231,11 +231,11 @@ fun AutomationsScreen(
                         response.rules.isEmpty() && error != null -> EmptyState(
                             icon = Icons.Outlined.ErrorOutline,
                             title = "cmux couldn't read the rules",
-                            body = "$error\n\nFix ${AutomationListing.FILE} on $macName, then reload.",
+                            body = "$error\n\nFix ${AutomationListing.FILE}, then reload.",
                         ) {
                             Button(onClick = { scope.launch { model.reload(connection) } }, enabled = !model.busy) { Text("Reload") }
                         }
-                        response.rules.isEmpty() -> NoAutomations(macName)
+                        response.rules.isEmpty() -> NoAutomations()
                         else -> LazyColumn(
                             Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(top = 8.dp, bottom = 32.dp),
@@ -253,7 +253,7 @@ fun AutomationsScreen(
                             }
                             item {
                                 Text(
-                                    "Edit rules in ${AutomationListing.FILE} on $macName, then reload.",
+                                    "Edit rules in ${AutomationListing.FILE}, then reload.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp),
@@ -268,13 +268,13 @@ fun AutomationsScreen(
 }
 
 @Composable
-private fun NoAutomations(macName: String) {
+private fun NoAutomations() {
     val uriHandler = LocalUriHandler.current
     EmptyState(
         icon = Icons.Outlined.Bolt,
         title = "No Automations",
         body = "Automations run when something happens, like an agent being resumed. " +
-            "Add rules to ${AutomationListing.FILE} on $macName and their notifications reach this phone.",
+            "Add rules to ${AutomationListing.FILE} and their notifications reach this phone.",
     ) {
         Button(onClick = { uriHandler.openUri(AutomationListing.GUIDE_URL) }) { Text("See how") }
     }
@@ -299,13 +299,15 @@ private fun AutomationRow(
     ) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(rule.id, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(
-                AutomationListing.summary(rule),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            listOf(AutomationListing.trigger(rule), AutomationListing.actions(rule)).forEach { line ->
+                Text(
+                    line,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             val failed = rule.lastRun?.let(AutomationListing::failed) == true
             Text(
                 AutomationListing.lastRun(rule),
@@ -375,7 +377,7 @@ fun AutomationScreen(
                     if (rule == null) {
                         FullWidthMessage(
                             response.configError?.let { "cmux couldn't read the rules: $it" }
-                                ?: "This rule is gone from ${AutomationListing.FILE} on $macName.",
+                                ?: "This rule is gone from ${AutomationListing.FILE}.",
                             Modifier.padding(top = 48.dp),
                         )
                     } else {
