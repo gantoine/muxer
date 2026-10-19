@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -60,6 +61,10 @@ class RelayConnectionTest {
                 )
                 "mark_notifications_read" -> webSocket.send("""{"type":"result","id":"$id","ok":true}""")
                 "attach" -> {
+                    if (message["surface_id"]?.jsonPrimitive?.content == "gone") {
+                        webSocket.send("""{"type":"detached","surface_id":"gone","reason":"not_found"}""")
+                        return
+                    }
                     webSocket.send("""{"type":"input_state","surface_id":"t9","state":"empty","blocks_typing":false,"waiting_on_human":false}""")
                     webSocket.send("""{"type":"input_state","surface_id":"t1","state":"dialog","blocks_typing":true,"waiting_on_human":true}""")
                     webSocket.send(
@@ -176,6 +181,62 @@ class RelayConnectionTest {
         val types = received.map { Json.parseToJsonElement(it).jsonObject["type"]?.jsonPrimitive?.content }
         assertEquals(listOf("hello", "attach", "fit", "detach", "attach"), types)
         assertTrue(received.last().contains("\"fit\":{\"columns\":40,\"rows\":20}"))
+        connection.stop()
+    }
+
+    private fun sent(type: String) = received.map { Json.parseToJsonElement(it).jsonObject }
+        .filter { it["type"]?.jsonPrimitive?.content == type }
+
+    private suspend fun connected() = connection().also { connection ->
+        server.enqueue(MockResponse.Builder().webSocketUpgrade(fakeRelay()).build())
+        connection.start()
+        withTimeout(5_000) { connection.state.first { it is ConnectionState.Connected } }
+    }
+
+    @Test
+    fun closingABubbleGivesTheTerminalBehindItBackWithItsFit() = runBlocking {
+        val connection = connected()
+        connection.attach("w1", "t1")
+        connection.setFit(40 to 20)
+        withTimeout(5_000) { connection.screen.first { it != null } }
+
+        val bubble = connection.attach("w1", "t2")
+        assertNull(connection.screen.value)
+        assertEquals("t2", connection.attachedSurfaceId)
+
+        connection.detach(bubble)
+        assertEquals("t1", connection.attachedSurfaceId)
+        withTimeout(5_000) { connection.screen.first { it?.surfaceId == "t1" } }
+        val reattach = sent("attach").last()
+        assertEquals("t1", reattach["surface_id"]?.jsonPrimitive?.content)
+        assertEquals("{\"columns\":40,\"rows\":20}", reattach["fit"].toString())
+        assertTrue(sent("detach").isEmpty())
+        connection.stop()
+    }
+
+    @Test
+    fun reattachingReplacesTheScreensOwnAttachment() = runBlocking {
+        val connection = connected()
+        val first = connection.attach("w1", "t1")
+        val second = connection.attach("w1", "t1", replacing = first)
+
+        connection.detach(second)
+        assertNull(connection.attachedSurfaceId)
+        withTimeout(5_000) { while (sent("detach").isEmpty()) delay(10) }
+        assertEquals(listOf("t1", "t1"), sent("attach").map { it["surface_id"]?.jsonPrimitive?.content })
+        connection.stop()
+    }
+
+    @Test
+    fun aClosedTerminalHandsTheConnectionBackToThePreviousOne() = runBlocking {
+        val connection = connected()
+        connection.attach("w1", "t1")
+        val bubble = connection.attach("w1", "gone")
+
+        withTimeout(5_000) { connection.screen.first { it?.surfaceId == "t1" } }
+        assertEquals("t1", connection.attachedSurfaceId)
+        connection.detach(bubble)
+        assertEquals("t1", connection.attachedSurfaceId)
         connection.stop()
     }
 

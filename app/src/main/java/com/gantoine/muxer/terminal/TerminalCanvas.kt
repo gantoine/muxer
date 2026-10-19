@@ -143,7 +143,7 @@ fun TerminalCanvas(
             }
             val before = viewport.linesAboveLive.coerceIn(0f, currentLiveTop.value)
             val after = (before + delta / lineHeight).coerceIn(0f, currentLiveTop.value)
-            if (delta > 0 && currentContent.value.historyRows == 0) needHistory.value()
+            if (delta > 0 && (before <= 0f || after >= currentLiveTop.value)) needHistory.value()
             viewport.linesAboveLive = after
             if (after <= 0f && before > 0f) returnToLive.value()
             (after - before) * lineHeight

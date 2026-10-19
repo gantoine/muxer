@@ -49,6 +49,7 @@ type Frame struct {
 	Foreground  string  `json:"foreground"`
 	Background  string  `json:"background"`
 	AltScreen   bool    `json:"alt_screen"`
+	HistoryRows int     `json:"history_rows"`
 	Cursor      *Cursor `json:"cursor,omitempty"`
 	Styles      []Style `json:"styles,omitempty"`
 	Changed     []Row   `json:"changed"`
@@ -67,6 +68,7 @@ type Tracker struct {
 	foreground string
 	background string
 	altScreen  bool
+	history    int
 	cursor     Cursor
 	started    bool
 }
@@ -90,6 +92,7 @@ func (t *Tracker) Update(replay cmux.Replay) (Frame, bool) {
 		Foreground:  grid.TerminalForeground,
 		Background:  grid.TerminalBackground,
 		AltScreen:   isAltScreen(grid),
+		HistoryRows: grid.HistoryRows,
 		Changed:     []Row{},
 	}
 
@@ -140,9 +143,10 @@ func (t *Tracker) Update(replay cmux.Replay) (Frame, bool) {
 		cursor = Cursor{Row: grid.Cursor.Row, Column: grid.Cursor.Column, Visible: grid.Cursor.Visible, Shape: grid.Cursor.Style}
 	}
 	frame.Cursor = &cursor
-	changed := full || len(frame.Changed) > 0 || len(frame.Styles) > 0 || cursor != t.cursor || frame.AltScreen != t.altScreen
+	changed := full || len(frame.Changed) > 0 || len(frame.Styles) > 0 || cursor != t.cursor || frame.AltScreen != t.altScreen || frame.HistoryRows != t.history
 	t.cursor = cursor
 	t.altScreen = frame.AltScreen
+	t.history = frame.HistoryRows
 	return frame, changed
 }
 

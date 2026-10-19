@@ -4,16 +4,25 @@ import com.gantoine.muxer.protocol.CellStyle
 import com.gantoine.muxer.protocol.RowUpdate
 import com.gantoine.muxer.protocol.ScreenFrame
 import com.gantoine.muxer.protocol.Span
+import com.gantoine.muxer.terminal.TerminalHistory
 import com.gantoine.muxer.terminal.TerminalModel
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TerminalModelTest {
     private val plain = CellStyle(id = 0, fg = "#FFFFFF", bg = "#000000")
     private val red = CellStyle(id = 1, fg = "#FF0000", bg = "#000000", bold = true)
 
-    private fun frame(full: Boolean, surface: String = "s1", vararg rows: Pair<Int, String>, styles: List<CellStyle> = emptyList()) =
+    private fun frame(
+        full: Boolean,
+        surface: String = "s1",
+        vararg rows: Pair<Int, String>,
+        styles: List<CellStyle> = emptyList(),
+        historyRows: Int? = null,
+    ) =
         ScreenFrame(
             workspaceId = "w1",
             surfaceId = surface,
@@ -23,6 +32,7 @@ class TerminalModelTest {
             foreground = "#FFFFFF",
             background = "#000000",
             styles = styles,
+            historyRows = historyRows,
             changed = rows.map { (row, text) ->
                 RowUpdate(row, if (text.isEmpty()) emptyList() else listOf(Span(0, text.length, 0, text)))
             },
@@ -68,5 +78,34 @@ class TerminalModelTest {
             ),
         )!!
         assertEquals("ab   日", screen.text(0))
+    }
+
+    @Test
+    fun framesCarryHowManyRowsScrolledIntoHistory() {
+        val first = TerminalModel.apply(null, frame(true, "s1", 0 to "$", historyRows = 0))!!
+        val scrolled = TerminalModel.apply(first, frame(false, "s1", 0 to "line 40", historyRows = 40))!!
+
+        assertEquals(0, first.historyRows)
+        assertEquals(40, scrolled.historyRows)
+    }
+
+    @Test
+    fun historyLoadedWhileTheTerminalWasEmptyIsReloadedOnceRowsScrollOff() {
+        val empty = TerminalHistory(emptyMap(), emptyList(), total = 0)
+        val fresh = TerminalModel.apply(null, frame(true, "s1", 0 to "$", historyRows = 0))!!
+        val scrolled = TerminalModel.apply(fresh, frame(false, "s1", 0 to "line 40", historyRows = 40))!!
+
+        assertTrue(TerminalModel.historyOutdated(null, fresh))
+        assertFalse(TerminalModel.historyOutdated(empty, fresh))
+        assertTrue(TerminalModel.historyOutdated(empty, scrolled))
+        assertFalse(TerminalModel.historyOutdated(TerminalHistory(emptyMap(), List(40) { emptyList() }, total = 40), scrolled))
+    }
+
+    @Test
+    fun withoutHistoryRowsFromTheRelayOnlyAnEmptyHistoryIsReloaded() {
+        val screen = TerminalModel.apply(null, frame(true, "s1", 0 to "$"))!!
+
+        assertTrue(TerminalModel.historyOutdated(TerminalHistory(emptyMap(), emptyList()), screen))
+        assertFalse(TerminalModel.historyOutdated(TerminalHistory(emptyMap(), listOf(emptyList())), screen))
     }
 }

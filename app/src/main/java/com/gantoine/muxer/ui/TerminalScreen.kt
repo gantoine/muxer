@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.SystemClock
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -95,6 +96,7 @@ import com.gantoine.muxer.model.AgentStatus
 import com.gantoine.muxer.model.ApprovalReply
 import com.gantoine.muxer.model.WorkspaceListing
 import com.gantoine.muxer.net.ConnectionState
+import com.gantoine.muxer.net.NO_ATTACHMENT
 import com.gantoine.muxer.net.RelayException
 import com.gantoine.muxer.net.VisibleTerminal
 import com.gantoine.muxer.notifications.ConversationShortcuts
@@ -108,6 +110,7 @@ import com.gantoine.muxer.terminal.TerminalHistory
 import com.gantoine.muxer.terminal.TerminalInputSink
 import com.gantoine.muxer.terminal.TerminalInputView
 import com.gantoine.muxer.terminal.TerminalKeys
+import com.gantoine.muxer.terminal.TerminalModel
 import com.gantoine.muxer.terminal.TerminalViewport
 import com.gantoine.muxer.terminal.fittingGrid
 import com.gantoine.muxer.terminal.rememberCellMetrics
@@ -134,7 +137,8 @@ fun TerminalScreen(
         return
     }
     val state by connection.state.collectAsState()
-    val screen by connection.screen.collectAsState()
+    val attachedScreen by connection.screen.collectAsState()
+    val screen = attachedScreen?.takeIf { it.surfaceId == surfaceId }
     val workspaces by connection.workspaces.collectAsState()
     val chat by connection.chat.collectAsState()
     val chatImages = remember(connection) { RemoteImages { connection.chatImage(it).getOrNull() } }
@@ -213,6 +217,7 @@ fun TerminalScreen(
     val showSelectionBar by remember(viewport) { derivedStateOf { viewport.selection != null && !viewport.selecting } }
     var history by remember(surfaceId) { mutableStateOf<TerminalHistory?>(null) }
     var loadingHistory by remember(surfaceId) { mutableStateOf(false) }
+    var historyLoadedAt by remember(surfaceId) { mutableLongStateOf(0L) }
     var inputView by remember { mutableStateOf<TerminalInputView?>(null) }
     var showChat by remember(surfaceId) { mutableStateOf(false) }
     var terminalDialog by remember(surfaceId) { mutableStateOf<TerminalDialog?>(null) }
@@ -249,14 +254,19 @@ fun TerminalScreen(
             if (app.connections.visibleTerminal.value === visible) app.connections.visibleTerminal.value = null
         }
     }
+    fun reclaimTerminal(): Boolean {
+        if (connection.attachedSurfaceId == surfaceId) return false
+        attachment = connection.attach(workspaceId, surfaceId, replacing = attachment)
+        return true
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_START) {
-        if (connection.attachedSurfaceId != surfaceId) attachment = connection.attach(workspaceId, surfaceId)
+        reclaimTerminal()
         app.connections.visibleTerminal.value = visible
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
         if (app.connections.visibleTerminal.value === visible) app.connections.visibleTerminal.value = null
     }
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { connection.resync() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { if (!reclaimTerminal()) connection.resync() }
     LaunchedEffect(connection) {
         connection.detached.collect { detached ->
             if (detached.surfaceId == surfaceId && !closing) {
@@ -282,15 +292,19 @@ fun TerminalScreen(
     }
 
     fun loadHistory() {
-        if (loadingHistory || history?.lines?.isNotEmpty() == true) return
+        if (loadingHistory || !TerminalModel.historyOutdated(history, screen)) return
+        if (history != null && SystemClock.elapsedRealtime() - historyLoadedAt < HISTORY_RELOAD_MILLIS) return
         loadingHistory = true
         scope.launch {
             connection.history()
                 .onSuccess { response ->
+                    val loaded = TerminalHistory(response.styles.associateBy { it.id }, response.lines, response.total)
+                    if (!viewport.isLive) viewport.linesAboveLive += loaded.lines.size - (history?.lines?.size ?: 0)
                     viewport.selection = null
-                    history = TerminalHistory(response.styles.associateBy { it.id }, response.lines)
+                    history = loaded
                 }
                 .onFailure { snackbar.showSnackbar(it.message ?: "Could not load earlier output.") }
+            historyLoadedAt = SystemClock.elapsedRealtime()
             loadingHistory = false
         }
     }
@@ -672,7 +686,7 @@ private fun AgentPrompts(
 
 private const val FIT_SETTLE_MS = 300L
 private const val FILE_SEARCH_DELAY_MILLIS = 150L
-private const val NO_ATTACHMENT = -1L
+private const val HISTORY_RELOAD_MILLIS = 1_000L
 
 private val KEYS = listOf(
     "Esc" to "escape",

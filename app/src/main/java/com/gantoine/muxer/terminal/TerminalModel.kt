@@ -15,6 +15,7 @@ data class TerminalScreen(
     val styles: Map<Int, CellStyle>,
     val lines: List<List<Span>>,
     val altScreen: Boolean = false,
+    val historyRows: Int? = null,
 ) {
     val lastUsedRow: Int by lazy {
         val lastText = lines.indexOfLast { line -> line.any { it.text.isNotBlank() } }
@@ -50,8 +51,17 @@ object TerminalModel {
         for (update in frame.changed) {
             if (update.row in lines.indices) lines[update.row] = update.spans
         }
-        return base.copy(lines = lines, cursor = frame.cursor ?: base.cursor, altScreen = frame.altScreen)
+        return base.copy(lines = lines, cursor = frame.cursor ?: base.cursor, altScreen = frame.altScreen, historyRows = frame.historyRows)
+    }
+
+    fun historyOutdated(history: TerminalHistory?, screen: TerminalScreen?): Boolean {
+        val historyRows = screen?.historyRows
+        return when {
+            history == null -> true
+            historyRows != null -> historyRows != history.total
+            else -> history.lines.isEmpty()
+        }
     }
 }
 
-data class TerminalHistory(val styles: Map<Int, CellStyle>, val lines: List<List<Span>>)
+data class TerminalHistory(val styles: Map<Int, CellStyle>, val lines: List<List<Span>>, val total: Int = lines.size)
