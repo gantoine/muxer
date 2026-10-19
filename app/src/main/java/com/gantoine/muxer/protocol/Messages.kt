@@ -378,3 +378,12 @@ data class CloudVmsResponse(val vms: List<CloudVm> = emptyList(), val plan: Stri
 
 @Serializable
 data class HostUsage(val cpuPercent: Double = 0.0, val memoryUsedBytes: Long = 0, val memoryTotalBytes: Long = 0)
+
+@Serializable
+data class PortLink(val port: Int, val url: String, val exposed: Boolean = false, val needsExpose: Boolean = false)
+
+@Serializable
+data class ExposedPort(val port: Int, val url: String)
+
+@Serializable
+data class ExposedPortsResponse(val ports: List<ExposedPort> = emptyList())

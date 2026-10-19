@@ -50,11 +50,13 @@ internal sealed interface WorkspaceDialog {
     data class GroupColor(val group: WorkspaceGroupInfo) : WorkspaceDialog
     data class NewInGroup(val group: WorkspaceGroupInfo) : WorkspaceDialog
     data class Ungroup(val group: WorkspaceGroupInfo) : WorkspaceDialog
+    data class OpenPort(val port: Int) : WorkspaceDialog
 }
 
 @Composable
 internal fun WorkspaceDialogs(
     dialog: WorkspaceDialog?,
+    connection: RelayConnection?,
     groups: List<WorkspaceGroupInfo>,
     canPinShortcuts: Boolean,
     onDialog: (WorkspaceDialog?) -> Unit,
@@ -221,13 +223,19 @@ internal fun WorkspaceDialogs(
             onDismiss = ::dismiss,
         )
         is WorkspaceDialog.PickTerminal -> ActionSheet(onDismiss = ::dismiss) {
+            val onPort: ((Int) -> Unit)? = if (connection?.supports("port_link") == true) {
+                { port -> onDialog(WorkspaceDialog.OpenPort(port)) }
+            } else {
+                null
+            }
             dialog.workspace.terminals.forEach { terminal ->
-                TerminalChoice(terminal) {
+                TerminalChoice(terminal, onPort = onPort) {
                     dismiss()
                     onOpenTerminal(dialog.workspace.id, terminal.id)
                 }
             }
         }
+        is WorkspaceDialog.OpenPort -> if (connection != null) PortSheet(connection, dialog.port, onDismiss = ::dismiss)
     }
 }
 

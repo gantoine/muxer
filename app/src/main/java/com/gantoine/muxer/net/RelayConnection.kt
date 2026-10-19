@@ -18,6 +18,8 @@ import com.gantoine.muxer.protocol.CloudVm
 import com.gantoine.muxer.protocol.CloudVmsResponse
 import com.gantoine.muxer.protocol.CreatedWorkspace
 import com.gantoine.muxer.protocol.DetachedMessage
+import com.gantoine.muxer.protocol.ExposedPort
+import com.gantoine.muxer.protocol.ExposedPortsResponse
 import com.gantoine.muxer.protocol.HistoryResponse
 import com.gantoine.muxer.protocol.HostUsage
 import com.gantoine.muxer.protocol.InputStateMessage
@@ -25,6 +27,7 @@ import com.gantoine.muxer.protocol.KeepAwakeMessage
 import com.gantoine.muxer.protocol.MacNotification
 import com.gantoine.muxer.protocol.NotificationMessage
 import com.gantoine.muxer.protocol.NotificationsResponse
+import com.gantoine.muxer.protocol.PortLink
 import com.gantoine.muxer.protocol.RecentSession
 import com.gantoine.muxer.protocol.RecentSessionsResponse
 import com.gantoine.muxer.protocol.RelayJson
@@ -490,6 +493,18 @@ class RelayConnection(
             },
             "The computer did not say what the VM is doing.",
         )
+
+    suspend fun portLink(port: Int): Result<PortLink> =
+        requestAs("port_link", buildJsonObject { put("port", port) }, "The computer sent no link for that port.")
+
+    suspend fun exposePort(port: Int): Result<PortLink> =
+        requestAs("expose_port", buildJsonObject { put("port", port) }, "The computer sent no link for that port.")
+
+    suspend fun unexposePort(port: Int): Result<List<ExposedPort>> =
+        requestOr("unexpose_port", buildJsonObject { put("port", port) }, ExposedPortsResponse()).map { it.ports }
+
+    suspend fun exposedPorts(): Result<List<ExposedPort>> =
+        requestOr("exposed_ports", default = ExposedPortsResponse()).map { it.ports }
 
     suspend fun notifications(): Result<List<MacNotification>> =
         requestOr("notifications", default = NotificationsResponse()).map { it.notifications }
