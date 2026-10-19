@@ -315,12 +315,13 @@ private fun AutomationRow(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            val failed = rule.lastRun?.let(AutomationListing::failed) == true
-            Text(
-                AutomationListing.lastRun(rule),
-                style = MaterialTheme.typography.labelMedium,
-                color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            rule.lastRun?.let { run ->
+                Text(
+                    AutomationListing.lastRun(rule),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (AutomationListing.failed(run)) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         Spacer(Modifier.width(12.dp))
         Switch(checked = rule.enabled, enabled = switchEnabled, onCheckedChange = onEnabledChange)
