@@ -144,6 +144,8 @@ The phone shows every notification cmux posts, so a [cmux automation](https://gi
 
 Run `cmux automation reload` after editing the file, and `cmux automation test phone-auto-resume --event '{"name":"agent.auto_resume.sent","category":"agent","payload":{"agent":"claude","attempt":1}}'` to check a rule without firing it.
 
+On the phone, open a computer's settings and tap **Automations** to see its rules. You can turn each one on or off, see what it reacts to and what it does, read its recent activity, and reload the file after you edit it. Writing new rules still happens in the file on the computer.
+
 ## Updating the relay
 
 ```sh

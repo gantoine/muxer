@@ -113,6 +113,10 @@ var requestMethods = map[string][]string{
 	"ungroup":                   {cmux.MethodGroupUngroup},
 	"create_workspace_in_group": {cmux.MethodGroupNewSpace},
 	"reconnect_workspace":       {cmux.MethodRemoteReconnect},
+	"automations":               {cmux.MethodAutomationList, cmux.MethodAutomationShow},
+	"set_automation_enabled":    {cmux.MethodAutomationEnable, cmux.MethodAutomationDisable, cmux.MethodAutomationList},
+	"automation_logs":           {cmux.MethodAutomationLogs},
+	"reload_automations":        {cmux.MethodAutomationReload, cmux.MethodAutomationList},
 }
 
 func (s *Server) unsupportedRequests() []string {

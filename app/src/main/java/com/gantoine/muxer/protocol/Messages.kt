@@ -378,4 +378,42 @@ data class CloudVm(
 data class CloudVmsResponse(val vms: List<CloudVm> = emptyList(), val plan: String? = null)
 
 @Serializable
+data class AutomationField(val name: String, val value: String = "")
+
+@Serializable
+data class AutomationAction(val type: String = "", val summary: String = "", val fields: List<AutomationField> = emptyList())
+
+@Serializable
+data class AutomationRateLimit(val intervalSeconds: Double = 1.0, val maximum: Int = 1)
+
+@Serializable
+data class AutomationLog(
+    val occurredAt: String = "",
+    val ruleId: String = "",
+    val event: String = "",
+    val status: String = "",
+    val detail: String = "",
+)
+
+@Serializable
+data class Automation(
+    val id: String,
+    val enabled: Boolean = true,
+    val trigger: String = "",
+    val event: String? = null,
+    val category: String? = null,
+    val conditions: List<String> = emptyList(),
+    val actions: List<AutomationAction> = emptyList(),
+    val actionCount: Int = 0,
+    val rateLimit: AutomationRateLimit? = null,
+    val lastRun: AutomationLog? = null,
+)
+
+@Serializable
+data class AutomationsResponse(val rules: List<Automation> = emptyList(), val configError: String? = null)
+
+@Serializable
+data class AutomationLogsResponse(val logs: List<AutomationLog> = emptyList())
+
+@Serializable
 data class HostUsage(val cpuPercent: Double = 0.0, val memoryUsedBytes: Long = 0, val memoryTotalBytes: Long = 0)

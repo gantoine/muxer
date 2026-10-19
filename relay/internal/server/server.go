@@ -92,6 +92,11 @@ type Cmux interface {
 	VMStatus(ctx context.Context, id string) (cmux.VM, error)
 	VMStats(ctx context.Context, id string) (cmux.VMStats, error)
 	SetVMPaused(ctx context.Context, id string, paused bool) error
+	Automations(ctx context.Context) ([]cmux.AutomationSummary, error)
+	Automation(ctx context.Context, id string) (cmux.AutomationRule, error)
+	SetAutomationEnabled(ctx context.Context, id string, enabled bool) error
+	AutomationLogs(ctx context.Context, limit int) ([]cmux.AutomationLog, error)
+	ReloadAutomations(ctx context.Context) error
 	Methods(ctx context.Context) ([]string, error)
 	HostName(ctx context.Context) (string, error)
 	SendChat(ctx context.Context, sessionID, text string, images []cmux.ChatImage) error

@@ -71,6 +71,11 @@ type fakeCmux struct {
 	checklists      map[string]cmux.Checklist
 	groupDetails    []cmux.GroupDetails
 	remotes         map[string]cmux.RemoteState
+	automationRules []cmux.AutomationRule
+	automationLogs  []cmux.AutomationLog
+	automationErr   error
+	automationCalls []string
+	reloadedRules   []cmux.AutomationRule
 }
 
 type sentChat struct {

@@ -55,6 +55,7 @@ fun ComputerSettingsScreen(
     onBack: () -> Unit,
     onOpenMetrics: (macId: String) -> Unit,
     onOpenSessions: (macId: String) -> Unit,
+    onOpenAutomations: (macId: String) -> Unit,
     onRemoved: () -> Unit,
 ) {
     val macs by app.store.macs.collectAsState(initial = null)
@@ -157,7 +158,7 @@ fun ComputerSettingsScreen(
 
             SectionLabel("This computer")
             val welcome = (state as? ConnectionState.Connected)?.welcome
-            val rows = 5 + if (welcome != null) 1 else 0
+            val rows = 6 + if (welcome != null) 1 else 0
             SettingsGroup {
                 SettingsRow(
                     index = 0,
@@ -197,9 +198,17 @@ fun ComputerSettingsScreen(
                     onClick = { onOpenSessions(macId) },
                     trailing = { Chevron() },
                 )
+                SettingsRow(
+                    index = 5,
+                    count = rows,
+                    headline = "Automations",
+                    supporting = "Turn cmux automation rules on or off",
+                    onClick = { onOpenAutomations(macId) },
+                    trailing = { Chevron() },
+                )
                 if (welcome != null) {
                     SettingsRow(
-                        index = 5,
+                        index = 6,
                         count = rows,
                         headline = "Versions",
                         supporting = "cmux ${welcome.cmuxVersion} · relay ${welcome.relayVersion}",
