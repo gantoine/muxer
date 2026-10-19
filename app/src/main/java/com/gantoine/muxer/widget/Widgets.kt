@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 
-data class WidgetInputs(val macIds: List<String>, val snapshots: Map<String, MacSnapshot>) {
+data class WidgetInputs(val macIds: List<String>, val snapshots: Map<String, MacSnapshot>, val locked: Boolean = false) {
     val paired: List<MacSnapshot> get() = WidgetData.paired(snapshots, macIds)
 }
 
@@ -40,12 +40,16 @@ object Widgets {
     )
 
     fun inputs(app: MuxerApplication): Flow<WidgetInputs> =
-        combine(app.store.macs, app.snapshots.snapshots) { macs, snapshots -> WidgetInputs(macs.map { it.id }, snapshots) }
+        combine(app.store.macs, app.snapshots.snapshots, app.lock.settings) { macs, snapshots, lock ->
+            WidgetInputs(macs.map { it.id }, snapshots, locked = lock?.enabled ?: true)
+        }
 
     @OptIn(FlowPreview::class)
     suspend fun keepFresh(app: MuxerApplication) {
         syncRefreshSchedule(app)
-        app.snapshots.snapshots.debounce(UPDATE_DEBOUNCE_MS).collect { updateAll(app) }
+        combine(app.snapshots.snapshots, app.lock.settings) { snapshots, lock -> snapshots to lock }
+            .debounce(UPDATE_DEBOUNCE_MS)
+            .collect { updateAll(app) }
     }
 
     suspend fun updateAll(context: Context) {

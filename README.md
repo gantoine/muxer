@@ -165,7 +165,7 @@ muxer uninstall        # stop the relay and remove it from login items
 
 - The phone can do what you can do in cmux: read every terminal and type into it. **Pair only phones you control, and revoke lost ones.**
 - Each phone gets its own random token. The computer stores only a SHA-256 hash of it, in `~/Library/Application Support/muxer/devices.json` (mode 0600). The phone keeps it encrypted with a key in the Android Keystore.
-- Turn on **Lock Muxer** in the app's settings to ask for your fingerprint, face or screen lock when the app opens or comes back after a minute away (you can pick a longer time). Answers and replies from notifications then need an unlocked phone, and the app stays out of the recents screen.
+- Turn on **Lock Muxer** in the app's settings to ask for your fingerprint, face or screen lock when the app opens or comes back after a minute away (you can pick a longer time). Notifications then show only a generic line on the lock screen, answers and replies from notifications need an unlocked phone, widgets show only counts, and the app stays out of the recents screen.
 - Pairing codes are single-use, expire after 10 minutes, and stop working after 10 wrong guesses.
 - The relay listens on `127.0.0.1` only. Put it behind an HTTPS proxy that only your devices can reach, such as `tailscale serve`. **Never expose it** with `tailscale funnel`, an open port, or a tunnel without access control.
 - Pairing, listing, and revoking go through a Unix socket that only your user can open, so none of them can be done over the network.

@@ -84,7 +84,9 @@ private fun ApprovalsContent(inputs: WidgetInputs) {
         WidgetData.needsYou(snapshots).map { ApprovalsEntry.NeedsYou(it) }
     WidgetSurface {
         WidgetHeader("Waiting for you", WidgetData.asOf(snapshots, now))
-        if (entries.isEmpty()) {
+        if (inputs.locked) {
+            LockedApprovals(entries.size)
+        } else if (entries.isEmpty()) {
             Box(GlanceModifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
                 Text(
                     "No agent is waiting for you",
@@ -104,6 +106,17 @@ private fun ApprovalsContent(inputs: WidgetInputs) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun LockedApprovals(waiting: Int) {
+    val context = LocalContext.current
+    Box(
+        GlanceModifier.fillMaxSize().padding(16.dp).clickable(actionStartActivity(Widgets.openApp(context))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(WidgetData.lockedApprovalsLabel(waiting), style = secondaryText(14).copy(textAlign = TextAlign.Center))
     }
 }
 

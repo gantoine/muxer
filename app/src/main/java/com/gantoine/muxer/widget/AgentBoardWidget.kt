@@ -86,7 +86,7 @@ private fun BoardContent(inputs: WidgetInputs) {
     val sections = WidgetData.board(snapshots, showComputerNames = inputs.macIds.size > 1)
     val asOf = WidgetData.asOf(snapshots, now)
     val size = LocalSize.current
-    if (size.height < AgentBoardWidget.LIST_SIZE.height || size.width < AgentBoardWidget.LIST_SIZE.width) {
+    if (inputs.locked || size.height < AgentBoardWidget.LIST_SIZE.height || size.width < AgentBoardWidget.LIST_SIZE.width) {
         CountsContent(WidgetData.countsLabel(WidgetData.counts(sections)), asOf)
     } else {
         ListContent(sections, asOf)
