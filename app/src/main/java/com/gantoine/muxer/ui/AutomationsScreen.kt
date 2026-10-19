@@ -457,7 +457,7 @@ private fun AutomationDetails(
             when {
                 lines == null -> item { FullWidthMessage("Fetching the log…") }
                 lines.isEmpty() -> item {
-                    FullWidthMessage("Nothing yet. cmux keeps this log in memory, so it starts over when cmux restarts.")
+                    FullWidthMessage("Nothing yet.")
                 }
                 else -> itemsIndexed(lines) { index, log -> LogRow(log, index, lines.size) }
             }
