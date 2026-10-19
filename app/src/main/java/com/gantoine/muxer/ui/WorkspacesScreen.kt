@@ -328,6 +328,7 @@ fun WorkspacesScreen(
 
     WorkspaceDialogs(
         dialog = dialog,
+        connection = connection,
         groups = groups,
         canPinShortcuts = canPinShortcuts,
         onDialog = { dialog = it },
@@ -634,9 +635,9 @@ private fun rememberSettledLane(lane: String?): String? {
 private const val WORKING_HOLD_MILLIS = 8_000L
 
 @Composable
-private fun TerminalGitLine(terminal: TerminalInfo) {
+private fun TerminalGitLine(terminal: TerminalInfo, showPorts: Boolean) {
     val branch = WorkspaceListing.gitSummary(terminal)
-    val ports = WorkspaceListing.portsSummary(terminal)
+    val ports = if (showPorts) WorkspaceListing.portsSummary(terminal) else null
     if (branch == null && ports == null) return
     Row(verticalAlignment = Alignment.CenterVertically) {
         if (branch != null) {
@@ -691,7 +692,13 @@ private fun SearchDock(query: String, onQueryChange: (String) -> Unit, onCreate:
 }
 
 @Composable
-internal fun TerminalChoice(terminal: TerminalInfo, selected: Boolean = false, onClick: () -> Unit) {
+internal fun TerminalChoice(
+    terminal: TerminalInfo,
+    selected: Boolean = false,
+    onPort: ((Int) -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    val portChips = onPort != null && terminal.listeningPorts.isNotEmpty()
     ListItem(
         headlineContent = { Text(terminal.title.ifBlank { "Terminal" }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
@@ -701,7 +708,8 @@ internal fun TerminalChoice(terminal: TerminalInfo, selected: Boolean = false, o
                 listOfNotNull(terminal.agentState, path)
                     .takeIf { it.isNotEmpty() }
                     ?.let { Text(it.joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                TerminalGitLine(terminal)
+                TerminalGitLine(terminal, showPorts = !portChips)
+                if (portChips) onPort?.let { PortChips(terminal.listeningPorts, it) }
             }
         },
         leadingContent = {

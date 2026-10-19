@@ -105,7 +105,7 @@ func TestListedMethodsDecideWhatTheRelayAsks(t *testing.T) {
 	_ = wsjson.Write(ctx, conn, map[string]any{"type": "hello", "id": "1"})
 	welcome := resultFor(t, ctx, conn, "1")
 	unsupported := welcome["data"].(map[string]any)["unsupported"].([]any)
-	for _, kind := range []any{"keep_awake", "top", "checklist", "close_terminal", "set_vm_paused", "start_agent_task"} {
+	for _, kind := range []any{"keep_awake", "top", "checklist", "close_terminal", "set_vm_paused", "start_agent_task", "port_link", "expose_port"} {
 		if !slices.Contains(unsupported, kind) {
 			t.Fatalf("the welcome must list %v as unsupported: %v", kind, unsupported)
 		}

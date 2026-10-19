@@ -92,6 +92,10 @@ var parallelRequests = map[string]bool{
 	"vms":              true,
 	"automations":      true,
 	"automation_logs":  true,
+	"port_link":        true,
+	"expose_port":      true,
+	"unexpose_port":    true,
+	"exposed_ports":    true,
 }
 
 func newSession(server *Server, conn *websocket.Conn, device devices.Device) *session {
@@ -594,6 +598,31 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 			return nil, err
 		}
 		return sent, nil
+	case "port_link", "expose_port", "unexpose_port":
+		var request struct {
+			Port int `json:"port"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || request.Port == 0 {
+			return nil, invalid(kind + " needs port.")
+		}
+		if kind != "unexpose_port" {
+			link, err := s.server.portLink(ctx, request.Port, kind == "expose_port")
+			if err != nil {
+				return nil, err
+			}
+			return link, nil
+		}
+		ports, err := s.server.unexposePort(ctx, request.Port)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ports": ports}, nil
+	case "exposed_ports":
+		ports, err := s.server.exposedPorts(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"ports": ports}, nil
 	default:
 		return s.organizingRequest(ctx, kind, raw)
 	}

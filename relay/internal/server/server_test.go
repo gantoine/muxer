@@ -507,9 +507,15 @@ type testRelay struct {
 	server    *Server
 	claudeDir string
 	codexDir  string
+	tailnet   *fakeTailnet
 }
 
 func startRelay(t *testing.T) testRelay {
+	t.Helper()
+	return startRelayWith(t, nil)
+}
+
+func startRelayWith(t *testing.T, configure func(*Options)) testRelay {
 	t.Helper()
 	store, err := devices.Open(filepath.Join(t.TempDir(), "devices.json"))
 	if err != nil {
@@ -522,16 +528,22 @@ func startRelay(t *testing.T) testRelay {
 	intervals.Chat = 10 * time.Millisecond
 	claudeDir := t.TempDir()
 	codexDir := t.TempDir()
-	relay := New(fake, store, nil, Options{
+	tailnet := newFakeTailnet()
+	options := Options{
+		Tailnet: tailnet, Listeners: tailnet.listenersOn, ExposedPorts: filepath.Join(t.TempDir(), "exposed-ports.json"), RelayPort: 8765,
 		MacName: "Test Mac", RelayVersion: "test", PollInterval: intervals, ClaudeConfigDir: claudeDir,
 		ClaudeSession: fake.runningClaude, CodexHome: codexDir,
 		HostUsage: func(context.Context) (host.Usage, error) {
 			return host.Usage{CPUPercent: 23.5, MemoryUsedBytes: 30 << 30, MemoryTotalBytes: 48 << 30}, nil
 		},
-	}, logger)
+	}
+	if configure != nil {
+		configure(&options)
+	}
+	relay := New(fake, store, nil, options, logger)
 	server := httptest.NewServer(relay.Handler())
 	t.Cleanup(server.Close)
-	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir}
+	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir, tailnet: tailnet}
 }
 
 func (r testRelay) pair(t *testing.T) string {

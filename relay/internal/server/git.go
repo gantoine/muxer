@@ -11,9 +11,11 @@ import (
 const failedGitReadsBeforeClearing = 3
 
 type gitInfo struct {
-	bySurface   map[string]cmux.TerminalGit
-	fetchedAt   time.Time
-	failedReads int
+	bySurface    map[string]cmux.TerminalGit
+	fetchedAt    time.Time
+	failedReads  int
+	discovered   map[string][]int
+	discoveredAt time.Time
 }
 
 func (g *gitInfo) refresh(ctx context.Context, s *Server) {
@@ -53,12 +55,38 @@ func (g *gitInfo) apply(workspaces []cmux.Workspace) {
 		for index := range workspace.Terminals {
 			terminal := &workspace.Terminals[index]
 			git, ok := g.bySurface[terminal.ID]
-			if !ok {
-				continue
+			if ok {
+				terminal.GitBranch = git.GitBranch
+				terminal.GitDirty = git.GitDirty
 			}
-			terminal.GitBranch = git.GitBranch
-			terminal.GitDirty = git.GitDirty
-			terminal.ListeningPorts = git.ListeningPorts
+			terminal.ListeningPorts = mergedPorts(git.ListeningPorts, g.discovered[terminal.ID])
 		}
 	}
+}
+
+func (g *gitInfo) discover(ctx context.Context, s *Server, workspaces []cmux.Workspace) {
+	if !s.canDiscoverPorts() {
+		g.discovered = nil
+		return
+	}
+	if time.Since(g.discoveredAt) < s.options.PollInterval.Git {
+		return
+	}
+	var surfaceIDs []string
+	for _, workspace := range workspaces {
+		for _, terminal := range workspace.Terminals {
+			surfaceIDs = append(surfaceIDs, terminal.ID)
+		}
+	}
+	g.discoveredAt = time.Now()
+	if !needsDiscovery(g.bySurface, surfaceIDs) {
+		g.discovered = nil
+		return
+	}
+	discovered, err := s.discoverPorts(ctx)
+	if err != nil {
+		s.logger.Warn("could not find terminal ports", "error", err)
+		return
+	}
+	g.discovered = discovered
 }

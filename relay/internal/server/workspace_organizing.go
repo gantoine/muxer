@@ -40,6 +40,7 @@ func (s *Server) pollWorkspaces(git *gitInfo) func(ctx context.Context) ([]byte,
 			return nil, false
 		}
 		git.refresh(ctx, s)
+		git.discover(ctx, s, list.Workspaces)
 		git.apply(list.Workspaces)
 		s.organizing.refresh(ctx, s, list)
 		s.organizing.apply(&list)

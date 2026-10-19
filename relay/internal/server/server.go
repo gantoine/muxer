@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -123,17 +124,23 @@ type Agents interface {
 }
 
 type Options struct {
-	MacName         string
-	FallbackMacName string
-	RelayVersion    string
-	PollInterval    Intervals
-	ClaudeConfigDir string
-	ClaudeSession   func(surfaceID string) (claude.SessionRef, bool)
-	CodexHome       string
-	Approvals       Approvals
-	Agents          Agents
-	HostUsage       func(context.Context) (host.Usage, error)
-	InstalledAgents func(context.Context) ([]string, error)
+	MacName            string
+	FallbackMacName    string
+	RelayVersion       string
+	PollInterval       Intervals
+	ClaudeConfigDir    string
+	ClaudeSession      func(surfaceID string) (claude.SessionRef, bool)
+	CodexHome          string
+	Approvals          Approvals
+	Agents             Agents
+	HostUsage          func(context.Context) (host.Usage, error)
+	InstalledAgents    func(context.Context) ([]string, error)
+	Tailnet            Tailnet
+	Listeners          func(ctx context.Context, port int) ([]netip.Addr, error)
+	ListeningProcesses func(ctx context.Context) (map[int][]int, error)
+	ParentProcesses    func(ctx context.Context) (map[int]int, error)
+	ExposedPorts       string
+	RelayPort          int
 }
 
 type Server struct {
@@ -157,6 +164,7 @@ type Server struct {
 	keepAwake  *feed
 	organizing *workspaceExtras
 	files      *files.Index
+	exposures  *portExposures
 }
 
 func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, logger *slog.Logger) *Server {
@@ -177,6 +185,7 @@ func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, l
 	server.viewportGeneration.Store(time.Now().UnixMilli())
 	server.organizing = &workspaceExtras{}
 	server.files = files.NewIndex()
+	server.exposures = &portExposures{path: options.ExposedPorts}
 	server.workspaces = newFeed(options.PollInterval.Workspaces, server.pollWorkspaces(&gitInfo{}))
 	server.keepAwake = newFeed(options.PollInterval.KeepAwake, server.pollKeepAwake)
 	return server

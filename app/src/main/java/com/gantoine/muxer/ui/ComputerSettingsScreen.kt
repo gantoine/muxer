@@ -31,7 +31,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,9 +44,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.gantoine.muxer.MuxerApplication
 import com.gantoine.muxer.net.ConnectionState
+import com.gantoine.muxer.protocol.ExposedPort
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -68,6 +72,9 @@ fun ComputerSettingsScreen(
     val snackbar = remember { SnackbarHostState() }
     var renaming by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf(false) }
+    var exposedPorts by remember { mutableStateOf<List<ExposedPort>?>(null) }
+    var stopping by remember { mutableStateOf(emptySet<Int>()) }
+    val context = LocalContext.current
 
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         app.notificationPermissionChanged()
@@ -92,6 +99,24 @@ fun ComputerSettingsScreen(
         scope.launch {
             connection.setKeepAwake(enabled).onFailure { snackbar.showSnackbar(it.message ?: "The computer didn't change its sleep setting.") }
             changingKeepAwake = false
+        }
+    }
+
+    val online = state is ConnectionState.Connected
+    LaunchedEffect(connection, online) {
+        val target = connection ?: return@LaunchedEffect
+        if (!online || !target.supports("exposed_ports")) return@LaunchedEffect
+        target.exposedPorts().onSuccess { exposedPorts = it }
+    }
+
+    fun stopExposing(port: Int) {
+        val target = connection ?: return
+        stopping = stopping + port
+        scope.launch {
+            target.unexposePort(port)
+                .onSuccess { exposedPorts = it }
+                .onFailure { snackbar.showSnackbar(OpenPorts.failureMessage(it)) }
+            stopping = stopping - port
         }
     }
 
@@ -154,6 +179,27 @@ fun ComputerSettingsScreen(
                     enabled = connected && awake != null && !changingKeepAwake,
                     onCheckedChange = ::setKeepAwake,
                 )
+            }
+
+            val shown = exposedPorts
+            if (!shown.isNullOrEmpty()) {
+                SectionLabel("Exposed ports")
+                SettingsGroup {
+                    shown.forEachIndexed { index, exposed ->
+                        SettingsRow(
+                            index = index,
+                            count = shown.size,
+                            headline = "Port ${exposed.port}",
+                            supporting = "${exposed.url} · reachable from your whole tailnet",
+                            onClick = { openInBrowser(context, exposed.url) },
+                            trailing = {
+                                TextButton(onClick = { stopExposing(exposed.port) }, enabled = exposed.port !in stopping) {
+                                    Text("Stop")
+                                }
+                            },
+                        )
+                    }
+                }
             }
 
             SectionLabel("This computer")
