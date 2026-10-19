@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.gantoine.muxer.lock.AppLock
+import com.gantoine.muxer.lock.LockSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -54,6 +56,10 @@ class MacStore(private val context: Context, scope: CoroutineScope, private val 
             fitToPhone = it[FIT_TO_PHONE] ?: true,
         )
     }
+
+    val lockSettings: Flow<LockSettings> = context.dataStore.data
+        .map { LockSettings(enabled = it[APP_LOCK] ?: false, timeoutMs = it[APP_LOCK_TIMEOUT_MS] ?: AppLock.DEFAULT_TIMEOUT_MS) }
+        .distinctUntilChanged()
 
     fun token(mac: Mac): String? = cipher.decrypt(mac.encryptedToken)
 
@@ -129,6 +135,14 @@ class MacStore(private val context: Context, scope: CoroutineScope, private val 
         context.dataStore.edit { it[FIT_TO_PHONE] = enabled }
     }
 
+    suspend fun setAppLock(enabled: Boolean) {
+        context.dataStore.edit { it[APP_LOCK] = enabled }
+    }
+
+    suspend fun setAppLockTimeout(timeoutMs: Long) {
+        context.dataStore.edit { it[APP_LOCK_TIMEOUT_MS] = timeoutMs }
+    }
+
     private suspend fun updateMac(id: String, transform: Mac.() -> Mac) = update { macs ->
         macs.map { if (it.id == id) it.transform() else it }
     }
@@ -150,5 +164,7 @@ class MacStore(private val context: Context, scope: CoroutineScope, private val 
         private val BACKGROUND_NOTIFICATIONS = booleanPreferencesKey("background_notifications")
         private val FONT_SIZE = floatPreferencesKey("font_size")
         private val FIT_TO_PHONE = booleanPreferencesKey("fit_to_phone")
+        private val APP_LOCK = booleanPreferencesKey("app_lock")
+        private val APP_LOCK_TIMEOUT_MS = longPreferencesKey("app_lock_timeout_ms")
     }
 }

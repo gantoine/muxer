@@ -132,6 +132,12 @@ object WidgetData {
         )
     }
 
+    fun lockedApprovalsLabel(waiting: Int): String = when (waiting) {
+        0 -> "No agent is waiting for you"
+        1 -> "1 agent is waiting. Open Muxer to answer."
+        else -> "$waiting agents are waiting. Open Muxer to answer."
+    }
+
     fun countsLabel(counts: BoardCounts): String {
         val parts = listOf(counts.waiting to "waiting", counts.needsYou to "need you", counts.retrying to "retrying", counts.working to "working")
             .filter { (count, _) -> count > 0 }

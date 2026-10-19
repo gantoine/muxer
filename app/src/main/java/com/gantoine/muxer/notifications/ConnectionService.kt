@@ -13,6 +13,8 @@ import androidx.lifecycle.lifecycleScope
 import com.gantoine.muxer.MainActivity
 import com.gantoine.muxer.MuxerApplication
 import com.gantoine.muxer.R
+import com.gantoine.muxer.notifications.LockScreenText.hiddenOnLockScreen
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -21,8 +23,11 @@ class ConnectionService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        startInForeground(TimedSummary(ActivitySummary(), Instant.now()))
-        lifecycleScope.launch { ActivityFeed(app.store, app.connections).summaries().collect(::startInForeground) }
+        startInForeground(TimedSummary(ActivitySummary(), Instant.now()), app.lock.requiresUnlockForActions)
+        lifecycleScope.launch {
+            combine(ActivityFeed(app.store, app.connections).summaries(), app.lock.settings) { timed, lock -> timed to (lock?.enabled ?: true) }
+                .collect { (timed, hidden) -> startInForeground(timed, hidden) }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -30,7 +35,7 @@ class ConnectionService : LifecycleService() {
         return START_STICKY
     }
 
-    private fun startInForeground(timed: TimedSummary) {
+    private fun startInForeground(timed: TimedSummary, hidden: Boolean) {
         val (summary, now) = timed
         val lines = LiveActivities.lines(summary, now)
         val builder = NotificationCompat.Builder(this, Notifier.ACTIVITY_CHANNEL)
@@ -40,6 +45,7 @@ class ConnectionService : LifecycleService() {
             .setSilent(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent(summary))
+            .hiddenOnLockScreen(this, hidden, Notifier.ACTIVITY_CHANNEL, LockScreenText.activity(summary))
         if (lines.isEmpty()) {
             builder.setContentText("Watching for terminal notifications")
         } else {

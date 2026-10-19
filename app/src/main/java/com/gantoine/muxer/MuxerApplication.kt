@@ -1,12 +1,16 @@
 package com.gantoine.muxer
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.gantoine.muxer.data.MacStore
 import com.gantoine.muxer.data.SnapshotStore
+import com.gantoine.muxer.lock.AppLock
 import com.gantoine.muxer.net.ConnectionManager
 import com.gantoine.muxer.net.PairingClient
 import com.gantoine.muxer.notifications.ConnectionService
@@ -37,10 +41,11 @@ class MuxerApplication : Application() {
             .build()
     }
 
+    val lock = AppLock(SystemClock::elapsedRealtime)
     val store: MacStore by lazy { MacStore(this, scope) }
     val snapshots: SnapshotStore by lazy { SnapshotStore(this, scope) }
     val shortcuts: ConversationShortcuts by lazy { ConversationShortcuts(this) }
-    val notifier: Notifier by lazy { Notifier(this, shortcuts) }
+    val notifier: Notifier by lazy { Notifier(this, shortcuts, requireUnlock = { lock.requiresUnlockForActions }) }
     val pairing: PairingClient by lazy { PairingClient(httpClient) }
 
     val connections: ConnectionManager by lazy {
@@ -68,6 +73,8 @@ class MuxerApplication : Application() {
         super.onCreate()
         notifier.createChannels()
         notificationPermission.value = notifier.canNotify()
+        registerActivityLifecycleCallbacks(LockTracker(lock))
+        scope.launch { store.lockSettings.collect(lock::apply) }
         scope.launch {
             store.migrate()
             connections.start()
@@ -102,4 +109,20 @@ class MuxerApplication : Application() {
                     .onFailure { Log.w("cmux", "Could not change the background connection service", it) }
             }
     }
+}
+
+private class LockTracker(private val lock: AppLock) : Application.ActivityLifecycleCallbacks {
+    override fun onActivityStarted(activity: Activity) = lock.activityStarted()
+
+    override fun onActivityStopped(activity: Activity) = lock.activityStopped(activity.isChangingConfigurations)
+
+    override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+
+    override fun onActivityResumed(activity: Activity) = Unit
+
+    override fun onActivityPaused(activity: Activity) = Unit
+
+    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+    override fun onActivityDestroyed(activity: Activity) = Unit
 }

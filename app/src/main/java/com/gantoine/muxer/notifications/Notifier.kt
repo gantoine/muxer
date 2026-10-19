@@ -21,11 +21,16 @@ import com.gantoine.muxer.data.Mac
 import com.gantoine.muxer.model.AgentNames
 import com.gantoine.muxer.model.Approvals
 import com.gantoine.muxer.model.parseInstant
+import com.gantoine.muxer.notifications.LockScreenText.hiddenOnLockScreen
 import com.gantoine.muxer.protocol.Approval
 import com.gantoine.muxer.protocol.RelayNotification
 import java.util.concurrent.ConcurrentHashMap
 
-class Notifier(private val context: Context, private val shortcuts: ConversationShortcuts) {
+class Notifier(
+    private val context: Context,
+    private val shortcuts: ConversationShortcuts,
+    private val requireUnlock: () -> Boolean,
+) {
     private data class Conversation(val target: ConversationTarget, val macName: String, val agentName: String, val channel: String) {
         val notificationId: Int get() = "conversation:${target.key}".hashCode()
     }
@@ -85,7 +90,8 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
         val title = notification.title?.takeIf { it.isNotBlank() } ?: notification.tabTitle ?: mac.name
         val subText = listOfNotNull(mac.name, notification.tabTitle?.takeIf { it != title }).joinToString(" · ")
         val body = listOfNotNull(notification.subtitle?.takeIf { it.isNotBlank() }, notification.body).joinToString("\n")
-        val built = NotificationCompat.Builder(context, NotificationFilter.channel(notification))
+        val channel = NotificationFilter.channel(notification)
+        val built = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setSubText(subText)
@@ -96,6 +102,7 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
             .setGroup(mac.id)
             .setContentIntent(openTerminalIntent(mac.id, notification.workspaceId, notification.surfaceId, notification.id.hashCode()))
             .setDeleteIntent(NotificationReadReceiver.notificationIntent(context, mac.id, notification.id))
+            .hiddenOnLockScreen(context, requireUnlock(), channel, LockScreenText.NEW_NOTIFICATION)
             .build()
         post(notification.id.hashCode(), built)
     }
@@ -145,6 +152,7 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
             .setContentIntent(openTerminalIntent(target.macId, target.workspaceId, target.surfaceId, conversation.notificationId))
             .setDeleteIntent(NotificationReadReceiver.terminalIntent(context, target.macId, target.surfaceId))
             .addAction(messageAction(target, conversation.agentName))
+            .hiddenOnLockScreen(context, requireUnlock(), conversation.channel, LockScreenText.NEW_NOTIFICATION)
         bubble(target, conversation.notificationId)?.let(builder::setBubbleMetadata)
         post(conversation.notificationId, builder.build())
     }
@@ -174,6 +182,7 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setGroup(mac.id)
             .setContentIntent(openTerminalIntent(mac.id, approval.workspaceId, approval.surfaceId, notificationId))
+            .hiddenOnLockScreen(context, requireUnlock(), APPROVALS_CHANNEL, LockScreenText.NEEDS_YOU)
         approvalActions(mac.id, approval).forEach(builder::addAction)
         bubble(target, notificationId)?.let(builder::setBubbleMetadata)
         post(notificationId, builder.build())
@@ -189,6 +198,7 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
             .setAutoCancel(true)
             .setGroup(approval.macId)
             .setContentIntent(openTerminalIntent(approval.macId, approval.workspaceId, approval.surfaceId, approvalNotificationId(approval.approvalId)))
+            .hiddenOnLockScreen(context, requireUnlock(), APPROVALS_CHANNEL, LockScreenText.NEW_NOTIFICATION)
             .build()
         post(approvalNotificationId(approval.approvalId), built)
     }
@@ -205,7 +215,8 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
 
     private fun approvalActions(macId: String, approval: Approval): List<NotificationCompat.Action> {
         val target = ApprovalTarget(macId, approval.id, approval.workspaceId, approval.surfaceId)
-        fun action(label: String, intent: PendingIntent) = NotificationCompat.Action.Builder(0, label, intent).build()
+        fun action(label: String, intent: PendingIntent) =
+            NotificationCompat.Action.Builder(0, label, intent).setAuthenticationRequired(requireUnlock()).build()
         val decisions = Approvals.decisions(approval)
         if (decisions.isNotEmpty()) {
             return decisions.map { action(it.label, ApprovalActionReceiver.intent(context, target, mode = it.mode)) }
@@ -227,6 +238,7 @@ class Notifier(private val context: Context, private val shortcuts: Conversation
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
             .setShowsUserInterface(false)
             .setAllowGeneratedReplies(false)
+            .setAuthenticationRequired(requireUnlock())
             .build()
 
     private fun bubble(target: ConversationTarget, requestCode: Int): NotificationCompat.BubbleMetadata? {
