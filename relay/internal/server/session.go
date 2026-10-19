@@ -671,6 +671,7 @@ func (s *session) hello(ctx context.Context, notificationsAfter int64) (any, err
 		"cmux_version":     identity.Version,
 		"device_id":        s.device.ID,
 		"unsupported":      s.server.unsupportedRequests(),
+		"features":         relayFeatures,
 	}
 	if s.server.hub != nil {
 		latest := s.server.hub.LatestSeq()

@@ -27,6 +27,8 @@ import (
 
 const ProtocolVersion = 1
 
+var relayFeatures = []string{taskInWorkspaceFeature}
+
 const claudeScanMaxAge = 2 * time.Second
 
 type Intervals struct {
@@ -73,6 +75,7 @@ type Cmux interface {
 	CloseWorkspace(ctx context.Context, workspaceID string, force bool) error
 	RenameWorkspace(ctx context.Context, workspaceID, title string) error
 	CreateTerminal(ctx context.Context, workspaceID string) (string, error)
+	CreateTerminalWithEnv(ctx context.Context, workspaceID, cwd string, env map[string]string) (string, error)
 	CloseTerminal(ctx context.Context, workspaceID, surfaceID string, force bool) error
 	RenameTerminal(ctx context.Context, workspaceID, surfaceID, title string) error
 	RestartTerminal(ctx context.Context, workspaceID, surfaceID, command string) error

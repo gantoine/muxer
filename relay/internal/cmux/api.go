@@ -155,6 +155,7 @@ const (
 	MethodCapabilities     = "system.capabilities"
 	MethodWorkspaceList    = "mobile.workspace.list"
 	MethodCreateWorkspace  = "workspace.create"
+	MethodCreateSurface    = "surface.create"
 	MethodReplay           = "mobile.terminal.replay"
 	MethodPaste            = "mobile.terminal.paste"
 	MethodViewport         = "mobile.terminal.viewport"
@@ -407,6 +408,18 @@ func (c *Client) CreateTerminal(ctx context.Context, workspaceID string) (string
 	}
 	err := c.Call(ctx, "mobile.terminal.create", map[string]any{"workspace_id": workspaceID}, &created)
 	return created.CreatedTerminalID, err
+}
+
+func (c *Client) CreateTerminalWithEnv(ctx context.Context, workspaceID, cwd string, env map[string]string) (string, error) {
+	params := map[string]any{"workspace_id": workspaceID, "type": "terminal", "focus": false, "initial_env": env}
+	if cwd != "" {
+		params["working_directory"] = cwd
+	}
+	var created struct {
+		SurfaceID string `json:"surface_id"`
+	}
+	err := c.Call(ctx, MethodCreateSurface, params, &created)
+	return created.SurfaceID, err
 }
 
 func (c *Client) RunCommand(ctx context.Context, workspaceID, surfaceID, command string) (bool, error) {
