@@ -87,6 +87,10 @@ internal fun WorkspaceDialogs(
         ) {
             val workspace = dialog.workspace
             SheetAction(Icons.AutoMirrored.Filled.OpenInNew, "Open") { dismiss(); onOpen(workspace) }
+            val onlyTerminal = workspace.terminals.singleOrNull()
+            if (onlyTerminal != null && connection?.supports("port_link") == true) {
+                PortActions(onlyTerminal.listeningPorts) { port -> onDialog(WorkspaceDialog.OpenPort(port)) }
+            }
             SheetAction(Icons.Filled.Add, "New terminal") {
                 dismiss()
                 onNewTerminal(workspace)

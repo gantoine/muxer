@@ -121,7 +121,7 @@ Then pair with that address using `muxer pair --url`.
 
 ## Opening a terminal's ports
 
-When a terminal runs a server, its ports show up in the terminal list. Tap one to open it in your phone's browser at the computer's Tailscale name, for example `http://my-mac.tailnet.ts.net:3000`. The phone connects to it directly over your tailnet, not through the relay.
+When a terminal runs a server, its ports show up in the terminal list and in the terminal's menu. Tap one to open it in your phone's browser at the computer's Tailscale name, for example `http://my-mac.tailnet.ts.net:3000`. The phone connects to it directly over your tailnet, not through the relay.
 
 A server that only listens on `127.0.0.1` can't be reached that way. The app asks before exposing it with `tailscale serve`, which gives it an `https://` address on the same port. **Every device on your tailnet can then reach it**, not just your phone. Stop exposing it from the computer's settings in the app. This only works with Tailscale for now.
 

@@ -103,6 +103,13 @@ fun PortChips(ports: List<Int>, onPort: (Int) -> Unit) {
     }
 }
 
+@Composable
+fun PortActions(ports: List<Int>, onPort: (Int) -> Unit) {
+    ports.forEach { port ->
+        SheetAction(Icons.AutoMirrored.Filled.OpenInNew, "Open port $port") { onPort(port) }
+    }
+}
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PortSheet(connection: RelayConnection, port: Int, onDismiss: () -> Unit) {

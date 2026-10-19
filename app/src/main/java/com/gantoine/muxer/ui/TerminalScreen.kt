@@ -611,6 +611,9 @@ fun TerminalScreen(
         }
         is TerminalDialog.OpenPort -> PortSheet(connection, current.port, onDismiss = { terminalDialog = null })
         TerminalDialog.Actions -> ActionSheet(onDismiss = { terminalDialog = null }) {
+            if (connection.supports("port_link")) {
+                PortActions(terminal?.listeningPorts.orEmpty()) { port -> terminalDialog = TerminalDialog.OpenPort(port) }
+            }
             SheetAction(Icons.Filled.DriveFileRenameOutline, "Rename") { terminalDialog = TerminalDialog.Rename }
             SheetAction(Icons.Filled.RestartAlt, "Restart") { terminalDialog = TerminalDialog.Restart }
             if ((workspace?.terminals?.size ?: 0) > 1) {
