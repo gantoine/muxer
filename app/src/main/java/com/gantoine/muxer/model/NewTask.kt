@@ -9,7 +9,7 @@ object NewTask {
     fun folders(workspaces: List<WorkspaceInfo>, sessions: List<RecentSession>): List<String> {
         val latest = LinkedHashMap<String, Double>()
         fun note(path: String?, at: Double) {
-            val folder = path?.trim()?.trimEnd('/')?.takeIf { it.startsWith("/") } ?: return
+            val folder = path?.trim()?.trimEnd('/')?.takeIf { it.startsWith("/") && !isTemporary(it) } ?: return
             if (at > (latest[folder] ?: Double.NEGATIVE_INFINITY)) latest[folder] = at
         }
         workspaces.forEach { workspace ->
@@ -22,6 +22,11 @@ object NewTask {
         }
         return latest.entries.sortedByDescending { it.value }.map { it.key }
     }
+
+    private val temporaryRoots = listOf("/tmp", "/private/tmp", "/var/folders", "/private/var/folders")
+
+    private fun isTemporary(folder: String): Boolean =
+        temporaryRoots.any { folder == it || folder.startsWith("$it/") }
 
     fun suggestions(folders: List<String>, typed: String, limit: Int = 6): List<String> {
         val query = typed.trim().trimEnd('/')

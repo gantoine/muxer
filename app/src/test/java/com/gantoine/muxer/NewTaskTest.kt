@@ -39,6 +39,18 @@ class NewTaskTest {
     }
 
     @Test
+    fun temporaryFoldersAreNotSuggested() {
+        val workspaces = listOf(WorkspaceInfo(id = "w1", currentDirectory = "/Users/me/code/api", lastActivityAt = now - 86_400))
+        val sessions = listOf(
+            RecentSession(agent = "claude", sessionId = "s1", cwd = "/private/tmp/scratch/agentdir", modified = "2026-10-18T11:30:00Z"),
+            RecentSession(agent = "claude", sessionId = "s2", cwd = "/tmp", modified = "2026-10-18T11:31:00Z"),
+            RecentSession(agent = "codex", sessionId = "s3", cwd = "/var/folders/xy/T/run", modified = "2026-10-18T11:32:00Z"),
+            RecentSession(agent = "codex", sessionId = "s4", cwd = "/tmpfiles/keep", modified = "2026-10-18T11:33:00Z"),
+        )
+        assertEquals(listOf("/tmpfiles/keep", "/Users/me/code/api"), NewTask.folders(workspaces, sessions))
+    }
+
+    @Test
     fun suggestionsMatchWhatWasTypedButNotTheExactFolder() {
         val folders = listOf("/Users/me/code/api", "/Users/me/code/docs", "/Users/me/notes")
         assertEquals(folders, NewTask.suggestions(folders, ""))
