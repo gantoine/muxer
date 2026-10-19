@@ -42,7 +42,7 @@ class PairingClient(private val client: OkHttpClient) {
                 }
             } catch (error: IOException) {
                 throw PairingException(
-                    "Could not reach ${base.host}. Check that this phone is on the network that reaches the computer, such as Tailscale or your VPN, and that the relay is running.",
+                    "Couldn't reach ${base.host}. Check that this phone is on the network that reaches the computer, such as Tailscale or your VPN, and that the relay is running.",
                 )
             }
         }

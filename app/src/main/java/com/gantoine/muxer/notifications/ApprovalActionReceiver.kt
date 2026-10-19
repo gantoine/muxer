@@ -37,7 +37,7 @@ class ApprovalActionReceiver : BroadcastReceiver() {
                 }
                 result.onFailure { error ->
                     val macName = app.store.find(target.macId)?.name ?: "your computer"
-                    app.notifier.showApprovalFailed(macName, target, error.message ?: "The computer did not accept it.")
+                    app.notifier.showApprovalFailed(macName, target, error.message ?: "The computer didn't accept it.")
                 }
             } finally {
                 pending.finish()

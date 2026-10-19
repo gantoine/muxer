@@ -26,7 +26,7 @@ class AgentReplyReceiver : BroadcastReceiver() {
                 app.connections.sendAgentMessage(target, text)
             }
             val macName = app.store.find(target.macId)?.name ?: "your computer"
-            val failure = result.exceptionOrNull()?.let { it.message ?: "The computer did not accept it." }
+            val failure = result.exceptionOrNull()?.let { it.message ?: "The computer didn't accept it." }
             app.notifier.showReply(target, macName, agentName, text, failure)
         }
         app.scope.launch {

@@ -185,7 +185,7 @@ fun SessionsScreen(
         ConfirmDialog(
             title = "Resume this session?",
             text = buildString {
-                append("“${SessionListing.label(session)}” opens in a new workspace")
+                append("\"${SessionListing.label(session)}\" opens in a new workspace")
                 if (folder != null) append(" in $folder")
                 append(" on $macName, and ${SessionListing.agentName(session.agent)} picks up where it left off.")
             },

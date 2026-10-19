@@ -83,7 +83,7 @@ fun ChecklistScreen(app: MuxerApplication, macId: String, workspaceId: String, o
                     checklist = it
                     onSuccess()
                 }
-                .onFailure { snackbar.showSnackbar(it.message ?: "That did not work.") }
+                .onFailure { snackbar.showSnackbar(it.message ?: "That didn't work.") }
         }
     }
 

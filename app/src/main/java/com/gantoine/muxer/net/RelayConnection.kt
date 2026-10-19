@@ -496,7 +496,7 @@ class RelayConnection(
         }).map { forget(approvalId) }
 
     suspend fun sendAgentMessage(text: String): Result<AgentMessage> =
-        requestAs<AgentMessage>("send_agent_message", buildJsonObject { put("text", text) }, "The computer did not confirm the message.")
+        requestAs<AgentMessage>("send_agent_message", buildJsonObject { put("text", text) }, "The computer didn't confirm the message.")
             .onSuccess { sent ->
                 if (_agentMessages.value.none { it.id == sent.id }) _agentMessages.value = listOf(sent) + _agentMessages.value
             }
@@ -527,7 +527,7 @@ class RelayConnection(
                 put("vm_id", vmId)
                 put("paused", paused)
             },
-            "The computer did not say what the VM is doing.",
+            "The computer didn't say what the VM is doing.",
         )
 
     suspend fun automations(): Result<AutomationsResponse> = requestOr("automations", default = AutomationsResponse())
@@ -623,7 +623,7 @@ class RelayConnection(
                 put("agent", session.agent)
                 put("session_id", session.sessionId)
             },
-            "The computer did not say where the session opened.",
+            "The computer didn't say where the session opened.",
         )
 
     suspend fun installedAgents(): Result<List<String>> =
@@ -638,7 +638,7 @@ class RelayConnection(
                 put("prompt", prompt)
                 if (title.isNotBlank()) put("title", title.trim())
             },
-            "The computer did not say where the task opened.",
+            "The computer didn't say where the task opened.",
         )
 
     suspend fun startAgentTaskInWorkspace(agent: String, workspaceId: String, prompt: String): Result<CreatedWorkspace> =
@@ -649,7 +649,7 @@ class RelayConnection(
                 put("workspace_id", workspaceId)
                 put("prompt", prompt)
             },
-            "The computer did not say where the task opened.",
+            "The computer didn't say where the task opened.",
         )
 
     suspend fun createTerminal(workspaceId: String): Result<String> =

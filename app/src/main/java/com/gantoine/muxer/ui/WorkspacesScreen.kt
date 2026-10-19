@@ -168,7 +168,7 @@ fun WorkspacesScreen(
                 if (failure is RelayException && failure.needsConfirmation && closing != null) {
                     dialog = closing.copy(force = true)
                 } else {
-                    snackbar.showSnackbar(failure.message ?: "That did not work.")
+                    snackbar.showSnackbar(failure.message ?: "That didn't work.")
                 }
             }
         }

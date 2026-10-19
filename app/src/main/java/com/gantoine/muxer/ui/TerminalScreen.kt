@@ -282,7 +282,7 @@ fun TerminalScreen(
         scope.launch {
             val result = connection.reply(approval.id, reply)
             sendingApprovals = sendingApprovals - approval.id
-            result.onFailure { snackbar.showSnackbar(it.message ?: "Could not send your answer.") }
+            result.onFailure { snackbar.showSnackbar(it.message ?: "Couldn't send your answer.") }
         }
     }
 
@@ -304,7 +304,7 @@ fun TerminalScreen(
                     viewport.selection = null
                     history = loaded
                 }
-                .onFailure { snackbar.showSnackbar(it.message ?: "Could not load earlier output.") }
+                .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't load earlier output.") }
             historyLoadedAt = SystemClock.elapsedRealtime()
             loadingHistory = false
         }
@@ -325,7 +325,7 @@ fun TerminalScreen(
         if (!viewport.isLive) goLive()
         scope.launch {
             connection.paste(text, submit).onFailure {
-                snackbar.showSnackbar(it.message ?: "The computer did not accept that.")
+                snackbar.showSnackbar(it.message ?: "The computer didn't accept that.")
             }
         }
     }
@@ -378,7 +378,7 @@ fun TerminalScreen(
             val result = if (toAgent) connection.deliverToAgent(message) else connection.paste(message, submit = true)
             result.onFailure { error ->
                 if (composerText.isBlank()) composerText = message
-                snackbar.showSnackbar(error.message ?: if (toAgent) "The message didn't reach the agent." else "The computer did not accept that.")
+                snackbar.showSnackbar(error.message ?: if (toAgent) "The message didn't reach the agent." else "The computer didn't accept that.")
             }
         }
     }
@@ -394,7 +394,7 @@ fun TerminalScreen(
                         terminalDialog = confirming.copy(force = true)
                     } else {
                         terminalDialog = null
-                        snackbar.showSnackbar(failure.message ?: "That did not work.")
+                        snackbar.showSnackbar(failure.message ?: "That didn't work.")
                     }
                 }
         }
@@ -615,7 +615,7 @@ fun TerminalScreen(
                 scope.launch {
                     connection.createTerminal(workspaceId)
                         .onSuccess { if (it.isNotEmpty()) onSwitchTerminal?.invoke(it) }
-                        .onFailure { snackbar.showSnackbar(it.message ?: "Could not open a new terminal.") }
+                        .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't open a new terminal.") }
                 }
             }
         }

@@ -73,7 +73,7 @@ object OpenPorts {
         "unknown_type" -> "Update muxer on this computer to open ports from your phone."
         "tailscale_missing" -> "Opening ports needs Tailscale on this computer. Install it and sign in, then try again."
         "tailscale_offline" -> "Tailscale isn't running or signed in on this computer."
-        else -> error.message ?: "Could not open that port."
+        else -> error.message ?: "Couldn't open that port."
     }
 }
 
