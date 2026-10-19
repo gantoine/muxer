@@ -196,14 +196,21 @@ func (s *Server) resumeSession(ctx context.Context, agent, sessionID string) (re
 		return resumedSession{}, err
 	}
 	terminal := terminalRef{WorkspaceID: created.WorkspaceID, SurfaceID: created.SurfaceID}
-	if err := s.waitUntilReady(ctx, terminal); err != nil {
+	if err := s.runWhenReady(ctx, terminal, resumeCommand(entry)); err != nil {
 		return resumedSession{}, err
 	}
-	submitted, err := s.cmux.RunCommand(ctx, terminal.WorkspaceID, terminal.SurfaceID, resumeCommand(entry))
+	return resumedSession{terminalRef: terminal}, nil
+}
+
+func (s *Server) runWhenReady(ctx context.Context, terminal terminalRef, command string) error {
+	if err := s.waitUntilReady(ctx, terminal); err != nil {
+		return err
+	}
+	submitted, err := s.cmux.RunCommand(ctx, terminal.WorkspaceID, terminal.SurfaceID, command)
 	if err == nil && !submitted {
 		err = s.cmux.SendKey(ctx, terminal.WorkspaceID, terminal.SurfaceID, "enter")
 	}
-	return resumedSession{terminalRef: terminal}, err
+	return err
 }
 
 func (s *Server) waitUntilReady(ctx context.Context, terminal terminalRef) error {

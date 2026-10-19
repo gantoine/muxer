@@ -5,17 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/gantoine/muxer/relay/internal/cmux"
+	"github.com/gantoine/muxer/relay/internal/host"
 )
 
-const (
-	maxTerminalTitleBytes = 256
-	defaultShell          = "/bin/zsh"
-)
+const maxTerminalTitleBytes = 256
 
 type terminalRequest struct {
 	WorkspaceID string `json:"workspace_id"`
@@ -66,15 +63,8 @@ func (s *Server) renameTerminal(ctx context.Context, request terminalRequest) er
 
 func (s *Server) restartTerminal(ctx context.Context, request terminalRequest) error {
 	return s.terminalAction(cmux.MethodRestartTerminal, func() error {
-		return s.cmux.RestartTerminal(ctx, request.WorkspaceID, request.SurfaceID, loginShell())
+		return s.cmux.RestartTerminal(ctx, request.WorkspaceID, request.SurfaceID, host.LoginShell())
 	})
-}
-
-func loginShell() string {
-	if shell := os.Getenv("SHELL"); strings.HasPrefix(shell, "/") {
-		return shell
-	}
-	return defaultShell
 }
 
 func (s *session) watchInputState(ctx context.Context, current *attachment) {

@@ -351,6 +351,9 @@ data class RecentSession(
 data class RecentSessionsResponse(val sessions: List<RecentSession> = emptyList())
 
 @Serializable
+data class InstalledAgentsResponse(val agents: List<String> = emptyList())
+
+@Serializable
 data class ResumedSession(val workspaceId: String, val surfaceId: String, val alreadyOpen: Boolean = false)
 
 @Serializable

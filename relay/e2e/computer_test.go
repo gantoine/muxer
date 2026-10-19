@@ -51,3 +51,15 @@ func TestRecentSessionsAnswer(t *testing.T) {
 		t.Fatalf("recent_sessions answered %v", sessions)
 	}
 }
+
+func TestAgentTasksCheckTheFolderBeforeOpeningAWorkspace(t *testing.T) {
+	p := connect(t)
+	installed := p.must("installed_agents", nil)
+	if _, ok := installed["agents"].([]any); !ok {
+		t.Fatalf("installed_agents answered %v", installed)
+	}
+	failure := p.failure("start_agent_task", map[string]any{"agent": "claude", "cwd": t.TempDir() + "/missing", "prompt": "hi"})
+	if failure.Code != "not_found" {
+		t.Fatalf("a missing folder must be refused: %v", failure)
+	}
+}

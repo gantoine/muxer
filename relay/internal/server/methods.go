@@ -89,6 +89,7 @@ var requestMethods = map[string][]string{
 	"restart_terminal":          {cmux.MethodRestartTerminal},
 	"recent_sessions":           {cmux.MethodVaultSessions},
 	"resume_session":            {cmux.MethodVaultSessions},
+	"start_agent_task":          {cmux.MethodCreateWorkspace},
 	"keep_awake":                {cmux.MethodKeepAwake},
 	"set_keep_awake":            {cmux.MethodSetKeepAwake},
 	"top":                       {cmux.MethodTop},

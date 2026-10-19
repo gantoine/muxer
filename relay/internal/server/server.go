@@ -68,6 +68,7 @@ type Cmux interface {
 	SetViewport(ctx context.Context, workspaceID, surfaceID string, viewport cmux.Viewport) error
 	ClearViewport(ctx context.Context, workspaceID, surfaceID, clientID string, generation int) error
 	CreateWorkspace(ctx context.Context, title, cwd string) (cmux.CreatedWorkspace, error)
+	CreateWorkspaceWithEnv(ctx context.Context, title, cwd string, env map[string]string) (cmux.CreatedWorkspace, error)
 	CloseWorkspace(ctx context.Context, workspaceID string, force bool) error
 	RenameWorkspace(ctx context.Context, workspaceID, title string) error
 	CreateTerminal(ctx context.Context, workspaceID string) (string, error)
@@ -132,6 +133,7 @@ type Options struct {
 	Approvals       Approvals
 	Agents          Agents
 	HostUsage       func(context.Context) (host.Usage, error)
+	InstalledAgents func(context.Context) ([]string, error)
 }
 
 type Server struct {

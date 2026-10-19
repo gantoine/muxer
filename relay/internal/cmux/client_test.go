@@ -277,3 +277,33 @@ func TestDefaultSocketPathsTryWhatCmuxLastRecordedFirst(t *testing.T) {
 		t.Fatalf("CMUX_SOCKET_PATH must win: %v", paths)
 	}
 }
+
+func TestWorkspacesCanStartWithAnEnvironment(t *testing.T) {
+	var mu sync.Mutex
+	var sent map[string]any
+	fake := startFakeSocket(t, func(method string, params map[string]any, _ bool) string {
+		mu.Lock()
+		defer mu.Unlock()
+		if method == MethodCreateWorkspace {
+			sent = params
+		}
+		return `{"ok":true,"result":{"workspace_id":"w1","surface_id":"t1"}}`
+	})
+	client := NewClient(fake.path, nil)
+	defer client.Close()
+	created, err := client.CreateWorkspaceWithEnv(context.Background(), "", "/src/api", map[string]string{"PROMPT": "fix it\nnow"})
+	if err != nil || created.WorkspaceID != "w1" || created.SurfaceID != "t1" {
+		t.Fatalf("created = %+v, err = %v", created, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if sent["cwd"] != "/src/api" || sent["focus"] != false {
+		t.Fatalf("params = %v", sent)
+	}
+	if env, _ := sent["initial_env"].(map[string]any); env["PROMPT"] != "fix it\nnow" {
+		t.Fatalf("initial_env = %v", sent["initial_env"])
+	}
+	if _, titled := sent["title"]; titled {
+		t.Fatalf("an empty title lets cmux name the workspace: %v", sent)
+	}
+}

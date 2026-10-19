@@ -154,6 +154,7 @@ const (
 	MethodIdentify         = "system.identify"
 	MethodCapabilities     = "system.capabilities"
 	MethodWorkspaceList    = "mobile.workspace.list"
+	MethodCreateWorkspace  = "workspace.create"
 	MethodReplay           = "mobile.terminal.replay"
 	MethodPaste            = "mobile.terminal.paste"
 	MethodViewport         = "mobile.terminal.viewport"
@@ -378,7 +379,17 @@ func (c *Client) CreateWorkspace(ctx context.Context, title, cwd string) (Create
 		params["cwd"] = cwd
 	}
 	var created CreatedWorkspace
-	err := c.Call(ctx, "workspace.create", params, &created)
+	err := c.Call(ctx, MethodCreateWorkspace, params, &created)
+	return created, err
+}
+
+func (c *Client) CreateWorkspaceWithEnv(ctx context.Context, title, cwd string, env map[string]string) (CreatedWorkspace, error) {
+	params := map[string]any{"focus": false, "cwd": cwd, "initial_env": env}
+	if title != "" {
+		params["title"] = title
+	}
+	var created CreatedWorkspace
+	err := c.Call(ctx, MethodCreateWorkspace, params, &created)
 	return created, err
 }
 

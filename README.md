@@ -46,7 +46,8 @@ You don't need to sign in to cmux. Everything runs between your phone and your o
 
 - the list of windows, workspaces and terminals, with agent status and unread counts,
 - a live view of one terminal, sent as changed rows only, and the keys you type,
-- cmux notifications (for example "Claude is waiting for your input"), with their text.
+- cmux notifications (for example "Claude is waiting for your input"), with their text,
+- new Claude Code or Codex tasks: pick a folder, write the first prompt, and the session opens as a chat.
 
 The phone reaches the relay through an HTTPS proxy in front of it that only your devices can reach, such as `tailscale serve`. See [Reaching the relay](#reaching-the-relay) for the options.
 
