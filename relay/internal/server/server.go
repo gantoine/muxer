@@ -118,20 +118,22 @@ type Agents interface {
 }
 
 type Options struct {
-	MacName         string
-	FallbackMacName string
-	RelayVersion    string
-	PollInterval    Intervals
-	ClaudeConfigDir string
-	ClaudeSession   func(surfaceID string) (claude.SessionRef, bool)
-	CodexHome       string
-	Approvals       Approvals
-	Agents          Agents
-	HostUsage       func(context.Context) (host.Usage, error)
-	Tailnet         Tailnet
-	Listeners       func(ctx context.Context, port int) ([]netip.Addr, error)
-	ExposedPorts    string
-	RelayPort       int
+	MacName            string
+	FallbackMacName    string
+	RelayVersion       string
+	PollInterval       Intervals
+	ClaudeConfigDir    string
+	ClaudeSession      func(surfaceID string) (claude.SessionRef, bool)
+	CodexHome          string
+	Approvals          Approvals
+	Agents             Agents
+	HostUsage          func(context.Context) (host.Usage, error)
+	Tailnet            Tailnet
+	Listeners          func(ctx context.Context, port int) ([]netip.Addr, error)
+	ListeningProcesses func(ctx context.Context) (map[int][]int, error)
+	ParentProcesses    func(ctx context.Context) (map[int]int, error)
+	ExposedPorts       string
+	RelayPort          int
 }
 
 type Server struct {

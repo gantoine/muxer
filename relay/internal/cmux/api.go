@@ -788,6 +788,7 @@ type TopWorkspace struct {
 	Resources Resources `json:"resources"`
 	Panes     []struct {
 		Surfaces []struct {
+			ID        string       `json:"id"`
 			Processes []TopProcess `json:"processes"`
 		} `json:"surfaces"`
 	} `json:"panes"`

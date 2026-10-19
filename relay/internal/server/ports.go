@@ -127,18 +127,53 @@ func (s *Server) checkTerminalPort(ctx context.Context, port int) error {
 	if port == s.options.RelayPort {
 		return portError("port_not_allowed", "That port is the relay itself.")
 	}
-	terminals, err := guarded(s, cmux.MethodTerminalGit, errPortsUnsupported, func() ([]cmux.TerminalGit, error) {
-		return s.cmux.TerminalGit(ctx)
-	})
+	ports, err := s.terminalPorts(ctx)
 	if err != nil {
 		return err
 	}
-	for _, terminal := range terminals {
-		if slices.Contains(terminal.ListeningPorts, port) {
+	for _, listening := range ports {
+		if slices.Contains(listening, port) {
 			return nil
 		}
 	}
 	return portError("port_not_allowed", "No terminal is listening on port "+strconv.Itoa(port)+".")
+}
+
+func (s *Server) terminalPorts(ctx context.Context) (map[string][]int, error) {
+	if !s.methods.supports(cmux.MethodTerminalGit) && !s.canDiscoverPorts() {
+		return nil, errPortsUnsupported
+	}
+	reported := map[string]cmux.TerminalGit{}
+	terminals, err := guarded(s, cmux.MethodTerminalGit, errMethodMissing, func() ([]cmux.TerminalGit, error) {
+		return s.cmux.TerminalGit(ctx)
+	})
+	if err != nil && !errors.Is(err, errMethodMissing) {
+		return nil, err
+	}
+	for _, terminal := range terminals {
+		reported[terminal.SurfaceID] = terminal
+	}
+	list, err := s.cmux.Workspaces(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var surfaceIDs []string
+	for _, workspace := range list.Workspaces {
+		for _, terminal := range workspace.Terminals {
+			surfaceIDs = append(surfaceIDs, terminal.ID)
+		}
+	}
+	var discovered map[string][]int
+	if needsDiscovery(reported, surfaceIDs) {
+		if discovered, err = s.discoverPorts(ctx); err != nil {
+			s.logger.Warn("could not find terminal ports", "error", err)
+		}
+	}
+	ports := make(map[string][]int, len(surfaceIDs))
+	for _, surfaceID := range surfaceIDs {
+		ports[surfaceID] = mergedPorts(reported[surfaceID].ListeningPorts, discovered[surfaceID])
+	}
+	return ports, nil
 }
 
 type portState struct {
