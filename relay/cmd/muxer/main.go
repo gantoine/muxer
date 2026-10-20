@@ -138,7 +138,7 @@ func runServe(args []string) error {
 	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, InstalledAgents: agentFinder.Installed, LoginShell: host.LoginShell(), Tailnet: tailnet.CLI{}, Listeners: host.Listeners, ListeningProcesses: host.ListeningProcesses, ParentProcesses: host.ParentProcesses, ExposedPorts: paths.exposedPorts, RelayPort: relayPort(listen), PostHogCloudConfig: paths.postHogCloud, PostHogCloudMirror: paths.cloudMirror, PostHogCloudExecutable: executable(), PostHogCloudEnv: stateDirEnv()}, logger)
 	adminErr := make(chan error, 1)
 	go func() {
-		if err := server.ServeAdmin(ctx, paths.admin, store, server.AdminHooks{SyncPostHogCloud: relay.SyncPostHogCloud}); err != nil {
+		if err := server.ServeAdmin(ctx, paths.admin, store, server.AdminHooks{SyncPostHogCloud: relay.SyncPostHogCloud, AttachPostHogCloud: relay.AttachPostHogCloud}); err != nil {
 			adminErr <- fmt.Errorf("admin socket %s: %w", paths.admin, err)
 			stop()
 		}

@@ -28,12 +28,14 @@ type logEntry struct {
 }
 
 type contentBlock struct {
-	Type    string `json:"type"`
-	Text    string `json:"text"`
-	Path    string `json:"path"`
-	OldText string `json:"oldText"`
-	NewText string `json:"newText"`
-	Content *struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	URI      string `json:"uri"`
+	MimeType string `json:"mimeType"`
+	Path     string `json:"path"`
+	OldText  string `json:"oldText"`
+	NewText  string `json:"newText"`
+	Content  *struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
@@ -117,16 +119,16 @@ const (
 )
 
 type PendingApproval struct {
-	RequestID  string
-	ToolCallID string
-	Kind       string
-	Tool       string
-	Title      string
-	Detail     string
-	Plan       string
-	Questions  []QuestionItem
-	Options    []PermissionOption
-	Time       string
+	RequestID  string             `json:"request_id"`
+	ToolCallID string             `json:"tool_call_id"`
+	Kind       string             `json:"kind"`
+	Tool       string             `json:"tool,omitempty"`
+	Title      string             `json:"title,omitempty"`
+	Detail     string             `json:"detail,omitempty"`
+	Plan       string             `json:"plan,omitempty"`
+	Questions  []QuestionItem     `json:"questions,omitempty"`
+	Options    []PermissionOption `json:"options,omitempty"`
+	Time       string             `json:"time,omitempty"`
 }
 
 type openChunk struct {
@@ -260,11 +262,14 @@ func (t *Transcript) prompt(id, timestamp string, params json.RawMessage) []chat
 		return nil
 	}
 	text := blocksText(request.Prompt)
-	if text == "" {
+	images := promptImages(request.Prompt)
+	if text == "" && len(images) == 0 {
 		return nil
 	}
-	t.prompts[text] = true
-	return t.add(chat.Entry{ID: id, Kind: chat.KindUser, Text: text, Time: timestamp})
+	if text != "" {
+		t.prompts[text] = true
+	}
+	return t.add(chat.Entry{ID: id, Kind: chat.KindUser, Text: text, Images: images, Time: timestamp})
 }
 
 func (t *Transcript) update(id, timestamp string, update sessionUpdate) []chat.Entry {
@@ -608,6 +613,19 @@ func contentText(raw json.RawMessage) string {
 		return blocksText(blocks)
 	}
 	return ""
+}
+
+func promptImages(blocks []contentBlock) []string {
+	var images []string
+	for _, b := range blocks {
+		if b.Type != "resource_link" || !strings.HasPrefix(b.MimeType, "image/") {
+			continue
+		}
+		if runID, artifactID, ok := attachmentFromURI(b.URI); ok {
+			images = append(images, ImageRef(runID, artifactID))
+		}
+	}
+	return images
 }
 
 func blocksText(blocks []contentBlock) string {

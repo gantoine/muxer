@@ -15,6 +15,8 @@ import (
 type AdminRequest struct {
 	Command  string `json:"command"`
 	DeviceID string `json:"device_id,omitempty"`
+	TaskID   string `json:"task_id,omitempty"`
+	RunID    string `json:"run_id,omitempty"`
 }
 
 type AdminResponse struct {
@@ -25,7 +27,8 @@ type AdminResponse struct {
 }
 
 type AdminHooks struct {
-	SyncPostHogCloud func(context.Context)
+	SyncPostHogCloud   func(context.Context)
+	AttachPostHogCloud func(ctx context.Context, conn net.Conn, taskID, runID string)
 }
 
 func ServeAdmin(ctx context.Context, path string, store *devices.Store, hooks AdminHooks) error {
@@ -54,8 +57,15 @@ func ServeAdmin(ctx context.Context, path string, store *devices.Store, hooks Ad
 func handleAdmin(ctx context.Context, conn net.Conn, store *devices.Store, hooks AdminHooks) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+	reader := bufio.NewReader(conn)
+	line, err := reader.ReadBytes('\n')
 	var request AdminRequest
-	if err := json.NewDecoder(bufio.NewReader(conn)).Decode(&request); err != nil {
+	if err != nil || json.Unmarshal(line, &request) != nil {
+		return
+	}
+	if request.Command == "posthog_cloud_attach" && hooks.AttachPostHogCloud != nil && request.RunID != "" {
+		_ = conn.SetDeadline(time.Time{})
+		hooks.AttachPostHogCloud(ctx, &bufferedConn{Conn: conn, reader: reader}, request.TaskID, request.RunID)
 		return
 	}
 	var response AdminResponse
@@ -87,6 +97,27 @@ func handleAdmin(ctx context.Context, conn net.Conn, store *devices.Store, hooks
 		response.Error = "unknown command"
 	}
 	_ = json.NewEncoder(conn).Encode(response)
+}
+
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+func (c *bufferedConn) Read(p []byte) (int, error) {
+	return c.reader.Read(p)
+}
+
+func DialAdmin(path string, request AdminRequest) (net.Conn, error) {
+	conn, err := net.DialTimeout("unix", path, 3*time.Second)
+	if err != nil {
+		return nil, errors.New("the relay is not running")
+	}
+	if err := json.NewEncoder(conn).Encode(request); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return conn, nil
 }
 
 func CallAdmin(path string, request AdminRequest) (AdminResponse, error) {

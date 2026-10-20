@@ -123,7 +123,7 @@ fun PostHogCloudRunScreen(
     val allApprovals by connection.collectOr(null) { it.approvals }
     val approvals = allApprovals.orEmpty().filter { it.posthogRunId == runId }
     val canAct = (state as? ConnectionState.Connected)?.has(PostHogCloud.ACTIONS_FEATURE) == true
-    val chatImages = remember { RemoteImages { null } }
+    val chatImages = remember(connection) { RemoteImages { connection?.chatImage(it)?.getOrNull() } }
     var draft by rememberSaveable { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     var answering by remember { mutableStateOf(emptySet<String>()) }

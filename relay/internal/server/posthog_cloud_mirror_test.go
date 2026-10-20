@@ -24,8 +24,10 @@ type mirrorTask struct {
 
 type fakeTasksAPI struct {
 	mu       sync.Mutex
+	url      string
 	tasks    []mirrorTask
 	commands []fakeCommand
+	uploads  int
 }
 
 func (f *fakeTasksAPI) setTasks(tasks ...mirrorTask) {
@@ -69,6 +71,15 @@ func (f *fakeTasksAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"t5"}`))
 		return
 	}
+	if r.URL.Path == "/s3" {
+		f.uploads++
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.URL.Path == "/download" {
+		_, _ = w.Write([]byte("\x89PNG"))
+		return
+	}
 	if r.URL.Path == "/api/projects/2/tasks/models/" {
 		_, _ = w.Write([]byte(`{"models":[]}`))
 		return
@@ -96,7 +107,13 @@ func (f *fakeTasksAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	switch strings.Join(parts[7:], "/") {
 	case "":
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": runID, "status": status, "runtime_adapter": "codex"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": runID, "status": status, "runtime_adapter": "codex", "artifacts": []map[string]any{{"id": "art-1", "storage_path": "runs/" + runID + "/image-1.png", "content_type": "image/png"}}})
+	case "artifacts/prepare_upload":
+		_, _ = w.Write([]byte(`{"artifacts":[{"id":"tmp","name":"image-1.png","type":"user_attachment","source":"posthog_code","content_type":"image/png","storage_path":"runs/` + runID + `/image-1.png","presigned_post":{"url":"` + f.url + `/s3","fields":{"key":"k"}}}]}`))
+	case "artifacts/finalize_upload":
+		_, _ = w.Write([]byte(`{"artifacts":[{"id":"art-1"}]}`))
+	case "artifacts/presign":
+		_, _ = w.Write([]byte(`{"url":"` + f.url + `/download"}`))
 	case "session_logs":
 		_, _ = w.Write([]byte("[" + cloudLine(runID+"-1", "session/prompt", `{"prompt":[{"type":"text","text":"do the thing"}]}`) + "]"))
 	case "stream_token":
@@ -140,6 +157,7 @@ func TestCloudRunsBecomeCmuxWorkspaces(t *testing.T) {
 	)
 	server := httptest.NewServer(api)
 	t.Cleanup(server.Close)
+	api.url = server.URL
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "posthog-cloud.json")
 	if err := posthogcloud.SaveConfig(configPath, posthogcloud.Config{Host: server.URL, ProjectID: 2, APIKey: "k", UserID: 42}); err != nil {
@@ -265,6 +283,25 @@ func TestCloudRunsBecomeCmuxWorkspaces(t *testing.T) {
 	}
 	if sent := api.sent("user_message"); len(sent) != 1 || sent[0].Params["content"] != "and the signup page" {
 		t.Fatalf("user_message = %+v", sent)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "send_images", "id": "images", "text": "", "images": []map[string]string{{"data_b64": "iVBORw==", "format": "png"}}})
+	if result := resultFor(t, ctx, conn, "images"); result["ok"] != true {
+		t.Fatalf("images to a mirrored run must upload: %v", result)
+	}
+	sent := api.sent("user_message")
+	if last := sent[len(sent)-1].Params; fmt.Sprint(last["artifact_ids"]) != "[art-1]" || last["content"] != nil {
+		t.Fatalf("an image-only message must carry the artifact and no text: %v", last)
+	}
+	api.mu.Lock()
+	uploads := api.uploads
+	api.mu.Unlock()
+	if uploads != 1 {
+		t.Fatalf("uploads = %d", uploads)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "image", "image": "phc-image:r1/art-1"})
+	image := resultFor(t, ctx, conn, "image")
+	if data, _ := image["data"].(map[string]any); data["data_b64"] != "iVBORw==" || data["format"] != "png" {
+		t.Fatalf("chat_image = %v", image)
 	}
 	_, commandsBefore, _, _ := snapshot()
 	_ = wsjson.Write(ctx, conn, map[string]any{"type": "key", "id": "esc", "key": "escape"})

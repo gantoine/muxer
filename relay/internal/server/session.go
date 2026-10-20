@@ -643,6 +643,9 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 		if strings.HasPrefix(request.Image, "/") {
 			return readAttachedImage(request.Image)
 		}
+		if strings.HasPrefix(request.Image, posthogcloud.ImageRefPrefix) {
+			return s.server.postHogCloudImage(ctx, request.Image)
+		}
 		var image cmux.ChatImage
 		err := s.withTerminal(current, func(current *attachment) error {
 			var err error

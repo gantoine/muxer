@@ -59,6 +59,7 @@ type Run struct {
 	ErrorMessage   string         `json:"error_message"`
 	Output         map[string]any `json:"output"`
 	State          map[string]any `json:"state"`
+	Artifacts      []Artifact     `json:"artifacts"`
 	CreatedAt      string         `json:"created_at"`
 	CompletedAt    string         `json:"completed_at"`
 }

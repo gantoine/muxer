@@ -3,6 +3,7 @@ package server
 import (
 	"cmp"
 	"context"
+	"encoding/base64"
 	"errors"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/gantoine/muxer/relay/internal/approvals"
 	"github.com/gantoine/muxer/relay/internal/chat"
+	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/notify"
 	"github.com/gantoine/muxer/relay/internal/posthogcloud"
 	"github.com/gantoine/muxer/relay/internal/pubsub"
@@ -533,12 +535,15 @@ func optionByID(options []posthogcloud.PermissionOption, ids []string) string {
 	return ""
 }
 
-func (h *cloudHub) sendMessage(ctx context.Context, client *posthogcloud.Client, taskID, runID, text string) error {
+func (h *cloudHub) sendMessage(ctx context.Context, client *posthogcloud.Client, taskID, runID, text string, uploads ...posthogcloud.Upload) error {
 	run, err := client.Run(ctx, taskID, runID)
 	if err != nil {
 		return postHogCloudError(err)
 	}
-	params := map[string]any{"content": text}
+	params := map[string]any{}
+	if text = strings.TrimSpace(text); text != "" {
+		params["content"] = text
+	}
 	if run.Terminal() {
 		if _, err := client.ResumeInCloud(ctx, taskID, runID); err != nil {
 			return &requestError{Code: "posthog_cloud_resume_failed", Message: "PostHog couldn't reopen this run: " + err.Error()}
@@ -549,6 +554,16 @@ func (h *cloudHub) sendMessage(ctx context.Context, client *posthogcloud.Client,
 	} else if status, state := h.live(runID); status == "in_progress" && state == posthogcloud.StateWorking {
 		params["steer"] = true
 	}
+	if len(uploads) > 0 {
+		ids, err := client.UploadAttachments(ctx, taskID, runID, uploads)
+		if err != nil {
+			return &requestError{Code: "posthog_cloud_upload_failed", Message: "The images didn't upload: " + err.Error()}
+		}
+		params["artifact_ids"] = ids
+	}
+	if len(params) == 0 || (len(params) == 1 && params["steer"] != nil) {
+		return invalid("Write a message or attach an image.")
+	}
 	_, err = client.CommandWithRetry(ctx, taskID, runID, "user_message", params)
 	var failure *posthogcloud.CommandError
 	if errors.As(err, &failure) && failure.RunEnded() {
@@ -558,6 +573,35 @@ func (h *cloudHub) sendMessage(ctx context.Context, client *posthogcloud.Client,
 		return postHogCloudError(err)
 	}
 	return nil
+}
+
+func (h *cloudHub) image(ctx context.Context, client *posthogcloud.Client, ref string) (cmux.ChatImage, error) {
+	runID, artifactID, ok := posthogcloud.ParseImageRef(ref)
+	if !ok {
+		return cmux.ChatImage{}, invalid("That isn't an image from a PostHog Cloud run.")
+	}
+	taskID := ""
+	if feed, found := h.feed(runID); found {
+		taskID = feed.taskID
+	} else if mirrored, found := h.server.mirror.run(runID); found {
+		taskID = mirrored.TaskID
+	}
+	gone := &requestError{Code: "not_found", Message: "That image is no longer on the run."}
+	if taskID == "" {
+		return cmux.ChatImage{}, gone
+	}
+	data, contentType, err := client.DownloadArtifact(ctx, taskID, runID, artifactID)
+	if errors.Is(err, posthogcloud.ErrArtifactMissing) {
+		return cmux.ChatImage{}, gone
+	}
+	if err != nil {
+		return cmux.ChatImage{}, postHogCloudError(err)
+	}
+	format := strings.TrimPrefix(strings.ToLower(contentType), "image/")
+	if format == "jpg" {
+		format = "jpeg"
+	}
+	return cmux.ChatImage{Data: base64.StdEncoding.EncodeToString(data), Format: format}, nil
 }
 
 func (h *cloudHub) stopTurn(ctx context.Context, client *posthogcloud.Client, taskID, runID string) error {

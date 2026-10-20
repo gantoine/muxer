@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -315,9 +317,42 @@ func (s *session) actOnMirroredRun(kind string, raw json.RawMessage, current *at
 		now := time.Now()
 		return cmux.AgentMessage{ID: "phc-" + strconv.FormatInt(now.UnixNano(), 36), Body: strings.TrimSpace(request.Text), State: "delivered", CreatedAt: float64(now.UnixMilli()) / 1000}, true, nil
 	case "send_images":
-		return nil, true, &requestError{Code: "unsupported", Message: "Images can't be sent to PostHog Cloud runs yet."}
+		if err != nil {
+			return nil, true, err
+		}
+		var images struct {
+			Text   string           `json:"text"`
+			Images []cmux.ChatImage `json:"images"`
+		}
+		if json.Unmarshal(raw, &images) != nil {
+			return nil, true, invalid("send_images needs images and optional text.")
+		}
+		if err := validImages(images.Images); err != nil {
+			return nil, true, err
+		}
+		uploads := make([]posthogcloud.Upload, len(images.Images))
+		for i, image := range images.Images {
+			data, _ := base64.StdEncoding.DecodeString(image.Data)
+			format := strings.ToLower(image.Format)
+			if format == "jpg" {
+				format = "jpeg"
+			}
+			uploads[i] = posthogcloud.Upload{Name: fmt.Sprintf("image-%d.%s", i+1, format), ContentType: "image/" + format, Data: data}
+		}
+		return nil, true, s.server.cloud.sendMessage(ctx, client, taskID, runID, images.Text, uploads...)
 	}
 	return nil, false, nil
+}
+
+func (s *Server) postHogCloudImage(ctx context.Context, ref string) (cmux.ChatImage, error) {
+	client, _, ok, err := s.postHogCloudClient()
+	if err != nil {
+		return cmux.ChatImage{}, err
+	}
+	if !ok {
+		return cmux.ChatImage{}, errPostHogCloudNotConnected
+	}
+	return s.cloud.image(ctx, client, ref)
 }
 
 func (s *session) sendToMirroredRun(ctx context.Context, client *posthogcloud.Client, taskID, runID, text string) error {
