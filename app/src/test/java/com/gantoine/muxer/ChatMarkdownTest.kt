@@ -109,6 +109,34 @@ class ChatMarkdownTest {
     }
 
     @Test
+    fun linksWhoseTextNamesAnotherSiteShowTheirRealTarget() {
+        assertEquals(
+            listOf(InlineSpan("https://evil.example/login", url = "https://evil.example/login")),
+            ChatMarkdown.inline("[https://github.com/you/repo](https://evil.example/login)"),
+        )
+        assertEquals(
+            listOf(InlineSpan("https://evil.example", url = "https://evil.example")),
+            ChatMarkdown.inline("[www.github.com](https://evil.example)"),
+        )
+        assertEquals(
+            listOf(InlineSpan("mailto:a@evil.example", url = "mailto:a@evil.example")),
+            ChatMarkdown.inline("[https://github.com](mailto:a@evil.example)"),
+        )
+    }
+
+    @Test
+    fun linksWhoseTextNamesTheSameSiteKeepTheirText() {
+        assertEquals(
+            listOf(InlineSpan("https://github.com/you", url = "https://www.github.com/you/repo")),
+            ChatMarkdown.inline("[https://github.com/you](https://www.github.com/you/repo)"),
+        )
+        assertEquals(
+            listOf(InlineSpan("README.md", url = "https://x.y/README.md")),
+            ChatMarkdown.inline("[README.md](https://x.y/README.md)"),
+        )
+    }
+
+    @Test
     fun relativeLinksStayPlainText() {
         assertEquals(listOf(InlineSpan("main.go")), ChatMarkdown.inline("[main.go](src/main.go)"))
     }
