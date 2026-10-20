@@ -3,6 +3,7 @@ package com.gantoine.muxer.ui
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -39,6 +40,7 @@ private object Routes {
     const val AUTOMATION = "mac/{macId}/automations/{ruleId}"
     const val TERMINAL = "terminal/{macId}/{workspaceId}/{surfaceId}?message={message}&images={images}"
     const val SHARE = "share?text={text}&images={images}"
+    const val POSTHOG_CLOUD_RUN = "posthog-cloud/{macId}/{taskId}/{runId}?title={title}&url={url}"
 
     fun pair(url: String = "", code: String = "") = "pair?url=${Uri.encode(url)}&code=${Uri.encode(code)}"
     fun workspaces(macId: String) = "mac/${Uri.encode(macId)}"
@@ -54,6 +56,8 @@ private object Routes {
     fun automation(macId: String, ruleId: String) = "mac/${Uri.encode(macId)}/automations/${Uri.encode(ruleId)}"
     fun terminal(macId: String, workspaceId: String, surfaceId: String, message: String = "", images: List<Uri> = emptyList()) =
         "terminal/${Uri.encode(macId)}/${Uri.encode(workspaceId)}/${Uri.encode(surfaceId)}?message=${Uri.encode(message)}&images=${encodeImages(images)}"
+    fun postHogCloudRun(macId: String, taskId: String, runId: String, title: String, url: String) =
+        "posthog-cloud/${Uri.encode(macId)}/${Uri.encode(taskId)}/${Uri.encode(runId)}?title=${Uri.encode(title)}&url=${Uri.encode(url)}"
     fun share(text: String, images: List<Uri>) = "share?text=${Uri.encode(text)}&images=${encodeImages(images)}"
 
     private fun encodeImages(images: List<Uri>) = Uri.encode(images.joinToString("\n"))
@@ -63,6 +67,7 @@ private object Routes {
 @Composable
 fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTargetHandled: () -> Unit) {
     val navController = rememberNavController()
+    val uriHandler = LocalUriHandler.current
 
     LaunchedEffect(launchTarget) {
         when (launchTarget) {
@@ -99,6 +104,35 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onOpenSettings = { navController.navigate(Routes.settings(it.id)) },
                 onAddMac = { navController.navigate(Routes.pair()) },
                 onOpenAppSettings = { navController.navigate(Routes.APP_SETTINGS) },
+                onOpenCloudTask = { hosted ->
+                    val task = hosted.task
+                    val runId = task.runId
+                    if (runId == null) {
+                        if (task.url.isNotBlank()) uriHandler.openUri(task.url)
+                    } else {
+                        navController.navigate(Routes.postHogCloudRun(hosted.macId, task.id, runId, PostHogCloud.title(task), task.url))
+                    }
+                },
+            )
+        }
+        composable(
+            Routes.POSTHOG_CLOUD_RUN,
+            arguments = listOf(
+                macArgument,
+                navArgument("taskId") { type = NavType.StringType },
+                navArgument("runId") { type = NavType.StringType },
+                navArgument("title") { type = NavType.StringType; defaultValue = "" },
+                navArgument("url") { type = NavType.StringType; defaultValue = "" },
+            ),
+        ) { entry ->
+            PostHogCloudRunScreen(
+                app = app,
+                macId = entry.arg("macId"),
+                taskId = entry.arg("taskId"),
+                runId = entry.arg("runId"),
+                title = entry.arg("title"),
+                taskUrl = entry.arg("url"),
+                onBack = { navController.popBackStack() },
             )
         }
         composable(Routes.APP_SETTINGS) {

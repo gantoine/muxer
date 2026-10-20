@@ -28,36 +28,38 @@ import (
 
 const ProtocolVersion = 1
 
-var relayFeatures = []string{taskInWorkspaceFeature}
+var relayFeatures = []string{taskInWorkspaceFeature, postHogCloudFeature}
 
 const claudeScanMaxAge = 2 * time.Second
 
 type Intervals struct {
-	Fast       time.Duration
-	Idle       time.Duration
-	Slow       time.Duration
-	IdleAfter  time.Duration
-	SlowAfter  time.Duration
-	Workspaces time.Duration
-	Chat       time.Duration
-	KeepAwake  time.Duration
-	Git        time.Duration
-	InputState time.Duration
-	Organizing time.Duration
+	Fast         time.Duration
+	Idle         time.Duration
+	Slow         time.Duration
+	IdleAfter    time.Duration
+	SlowAfter    time.Duration
+	Workspaces   time.Duration
+	Chat         time.Duration
+	KeepAwake    time.Duration
+	Git          time.Duration
+	InputState   time.Duration
+	Organizing   time.Duration
+	PostHogCloud time.Duration
 }
 
 var DefaultIntervals = Intervals{
-	Fast:       80 * time.Millisecond,
-	Idle:       250 * time.Millisecond,
-	Slow:       time.Second,
-	IdleAfter:  3 * time.Second,
-	SlowAfter:  time.Minute,
-	Workspaces: 2 * time.Second,
-	Chat:       500 * time.Millisecond,
-	KeepAwake:  30 * time.Second,
-	Git:        10 * time.Second,
-	InputState: time.Second,
-	Organizing: 5 * time.Second,
+	Fast:         80 * time.Millisecond,
+	Idle:         250 * time.Millisecond,
+	Slow:         time.Second,
+	IdleAfter:    3 * time.Second,
+	SlowAfter:    time.Minute,
+	Workspaces:   2 * time.Second,
+	Chat:         500 * time.Millisecond,
+	KeepAwake:    30 * time.Second,
+	Git:          10 * time.Second,
+	InputState:   time.Second,
+	Organizing:   5 * time.Second,
+	PostHogCloud: postHogCloudPollInterval,
 }
 
 type Cmux interface {
@@ -148,6 +150,8 @@ type Options struct {
 	ExposedPorts       string
 	AutomationsFile    string
 	RelayPort          int
+	PostHogCloudConfig string
+	PostHogCloudHTTP   *http.Client
 }
 
 type Server struct {

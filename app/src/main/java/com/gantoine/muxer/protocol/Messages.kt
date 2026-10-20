@@ -382,6 +382,44 @@ data class CloudVm(
 data class CloudVmsResponse(val vms: List<CloudVm> = emptyList(), val plan: String? = null)
 
 @Serializable
+data class PostHogCloudTask(
+    val id: String,
+    val number: Int? = null,
+    val title: String = "",
+    val repository: String? = null,
+    val runId: String? = null,
+    val status: String = "not_started",
+    val error: String? = null,
+    val updatedAt: String? = null,
+    val url: String = "",
+)
+
+@Serializable
+data class PostHogCloudTasksResponse(val connected: Boolean = false, val account: String? = null, val tasks: List<PostHogCloudTask> = emptyList())
+
+@Serializable
+data class PostHogCloudRun(
+    val taskId: String,
+    val runId: String,
+    val status: String,
+    val state: String? = null,
+    val branch: String? = null,
+    val pullRequest: String? = null,
+    val model: String? = null,
+    val agent: String? = null,
+    val error: String? = null,
+)
+
+@Serializable
+data class PostHogCloudRunMessage(val run: PostHogCloudRun)
+
+@Serializable
+data class PostHogCloudChatMessage(val runId: String, val reset: Boolean = false, val entries: List<ChatEntry> = emptyList())
+
+@Serializable
+data class PostHogCloudRunErrorMessage(val runId: String, val error: RequestError? = null)
+
+@Serializable
 data class AutomationField(val name: String, val value: String = "")
 
 @Serializable

@@ -8,11 +8,11 @@ import com.gantoine.muxer.protocol.AgentActivityMessage
 import com.gantoine.muxer.protocol.AgentMessage
 import com.gantoine.muxer.protocol.AgentMessagesMessage
 import com.gantoine.muxer.protocol.Approval
+import com.gantoine.muxer.protocol.ApprovalsMessage
 import com.gantoine.muxer.protocol.Automation
 import com.gantoine.muxer.protocol.AutomationLog
 import com.gantoine.muxer.protocol.AutomationLogsResponse
 import com.gantoine.muxer.protocol.AutomationsResponse
-import com.gantoine.muxer.protocol.ApprovalsMessage
 import com.gantoine.muxer.protocol.ChatFiles
 import com.gantoine.muxer.protocol.ChatImageData
 import com.gantoine.muxer.protocol.ChatMessage
@@ -33,8 +33,11 @@ import com.gantoine.muxer.protocol.MacNotification
 import com.gantoine.muxer.protocol.NotificationMessage
 import com.gantoine.muxer.protocol.NotificationsResponse
 import com.gantoine.muxer.protocol.PortLink
-import com.gantoine.muxer.protocol.TerminalPortLink
-import com.gantoine.muxer.protocol.TerminalPortLinksResponse
+import com.gantoine.muxer.protocol.PostHogCloudChatMessage
+import com.gantoine.muxer.protocol.PostHogCloudRun
+import com.gantoine.muxer.protocol.PostHogCloudRunErrorMessage
+import com.gantoine.muxer.protocol.PostHogCloudRunMessage
+import com.gantoine.muxer.protocol.PostHogCloudTasksResponse
 import com.gantoine.muxer.protocol.RecentSession
 import com.gantoine.muxer.protocol.RecentSessionsResponse
 import com.gantoine.muxer.protocol.RelayJson
@@ -43,6 +46,8 @@ import com.gantoine.muxer.protocol.RequestError
 import com.gantoine.muxer.protocol.ResumedSession
 import com.gantoine.muxer.protocol.Retry
 import com.gantoine.muxer.protocol.ScreenFrame
+import com.gantoine.muxer.protocol.TerminalPortLink
+import com.gantoine.muxer.protocol.TerminalPortLinksResponse
 import com.gantoine.muxer.protocol.TopSummary
 import com.gantoine.muxer.protocol.Welcome
 import com.gantoine.muxer.protocol.WorkspaceGroupInfo
@@ -133,6 +138,17 @@ class RelayConnection(
 
     private val _chat = MutableStateFlow<ChatState?>(null)
     val chat: StateFlow<ChatState?> = _chat.asStateFlow()
+
+    private val _cloudChat = MutableStateFlow<ChatState?>(null)
+    val cloudChat: StateFlow<ChatState?> = _cloudChat.asStateFlow()
+
+    private val _cloudRun = MutableStateFlow<PostHogCloudRun?>(null)
+    val cloudRun: StateFlow<PostHogCloudRun?> = _cloudRun.asStateFlow()
+
+    private val _cloudRunError = MutableStateFlow<String?>(null)
+    val cloudRunError: StateFlow<String?> = _cloudRunError.asStateFlow()
+
+    @Volatile private var cloudWatch: Pair<String, String>? = null
 
     private val _approvals = MutableStateFlow<List<Approval>?>(null)
     val approvals: StateFlow<List<Approval>?> = _approvals.asStateFlow()
@@ -275,6 +291,7 @@ class RelayConnection(
             listener.welcomed = true
             _state.value = ConnectionState.Connected(welcome)
             if (!suspended) attachment?.let { sendAttach(it) }
+            cloudWatch?.let { (taskId, runId) -> sendCloudWatch(taskId, runId) }
             onWelcome(macId, welcome)
         }.onFailure {
             val message = it.message ?: "The computer rejected the connection."
@@ -333,6 +350,21 @@ class RelayConnection(
             "input_state" -> {
                 val state = message.decode<InputStateMessage>()
                 if (state.surfaceId == attachment?.surfaceId) _inputState.value = state
+            }
+            "posthog_cloud_chat" -> {
+                val chat = message.decode<PostHogCloudChatMessage>()
+                if (chat.runId == cloudWatch?.second) {
+                    _cloudRunError.value = null
+                    _cloudChat.value = ChatModel.apply(_cloudChat.value, ChatMessage(surfaceId = "", sessionId = chat.runId, reset = chat.reset, entries = chat.entries))
+                }
+            }
+            "posthog_cloud_run" -> {
+                val run = message.decode<PostHogCloudRunMessage>().run
+                if (run.runId == cloudWatch?.second) _cloudRun.value = run
+            }
+            "posthog_cloud_run_error" -> {
+                val failure = message.decode<PostHogCloudRunErrorMessage>()
+                if (failure.runId == cloudWatch?.second) _cloudRunError.value = failure.error?.message
             }
             "keep_awake" -> _keepAwake.value = message.decode<KeepAwakeMessage>().enabled
             "notification" -> notifications.trySend(message.decode<NotificationMessage>().notification)
@@ -517,6 +549,37 @@ class RelayConnection(
     suspend fun top(): Result<TopSummary> = requestAs("top", missing = "The computer sent no metrics.")
 
     suspend fun hostUsage(): Result<HostUsage> = requestAs("host_usage", missing = "The computer sent no usage.")
+
+    suspend fun postHogCloudTasks(): Result<PostHogCloudTasksResponse> =
+        requestAs("posthog_cloud_tasks", missing = "The computer sent no PostHog Cloud tasks.")
+
+    fun watchPostHogCloudRun(taskId: String, runId: String) {
+        if (cloudWatch?.second != runId) {
+            _cloudChat.value = ChatState(runId)
+            _cloudRun.value = null
+            _cloudRunError.value = null
+        }
+        cloudWatch = taskId to runId
+        sendCloudWatch(taskId, runId)
+    }
+
+    fun unwatchPostHogCloudRun(runId: String) {
+        if (cloudWatch?.second != runId) return
+        cloudWatch = null
+        _cloudChat.value = null
+        _cloudRun.value = null
+        _cloudRunError.value = null
+        send("unwatch_posthog_cloud_run")
+    }
+
+    private fun sendCloudWatch(taskId: String, runId: String) {
+        scope.launch {
+            request("watch_posthog_cloud_run", buildJsonObject {
+                put("task_id", taskId)
+                put("run_id", runId)
+            }).onFailure { if (cloudWatch?.second == runId) _cloudRunError.value = it.message }
+        }
+    }
 
     suspend fun cloudVms(): Result<CloudVmsResponse> = requestAs("vms", missing = "The computer sent no VMs.")
 

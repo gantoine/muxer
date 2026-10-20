@@ -60,6 +60,13 @@ class RelayConnectionTest {
                     """{"type":"result","id":"$id","ok":true,"data":{"notifications":[{"id":"n1","title":"Claude Code","workspace_id":"w1","surface_id":"t1","created_at":"2026-10-16T17:59:08Z","is_read":true,"surface_ref":"surface:1"}]}}""",
                 )
                 "mark_notifications_read" -> webSocket.send("""{"type":"result","id":"$id","ok":true}""")
+                "watch_posthog_cloud_run" -> {
+                    webSocket.send("""{"type":"result","id":"$id","ok":true}""")
+                    webSocket.send("""{"type":"posthog_cloud_chat","run_id":"r9","reset":true,"entries":[{"id":"x","kind":"user","text":"another run"}]}""")
+                    webSocket.send("""{"type":"posthog_cloud_chat","run_id":"r1","reset":true,"entries":[{"id":"1","kind":"user","text":"fix login"}]}""")
+                    webSocket.send("""{"type":"posthog_cloud_chat","run_id":"r1","entries":[{"id":"2","kind":"assistant","text":"Done."}]}""")
+                    webSocket.send("""{"type":"posthog_cloud_run","run":{"task_id":"t1","run_id":"r1","status":"in_progress","state":"idle","pull_request":"https://github.com/acme/app/pull/9"}}""")
+                }
                 "attach" -> {
                     if (message["surface_id"]?.jsonPrimitive?.content == "gone") {
                         webSocket.send("""{"type":"detached","surface_id":"gone","reason":"not_found"}""")
@@ -191,6 +198,24 @@ class RelayConnectionTest {
         server.enqueue(MockResponse.Builder().webSocketUpgrade(fakeRelay()).build())
         connection.start()
         withTimeout(5_000) { connection.state.first { it is ConnectionState.Connected } }
+    }
+
+    @Test
+    fun watchingACloudRunFollowsOnlyThatRun() = runBlocking {
+        val connection = connected()
+        connection.watchPostHogCloudRun("t1", "r1")
+        val run = withTimeout(5_000) { connection.cloudRun.first { it != null } }!!
+        assertEquals("https://github.com/acme/app/pull/9", run.pullRequest)
+        val chat = connection.cloudChat.value!!
+        assertEquals(listOf("fix login", "Done."), chat.entries.map { it.text })
+        assertTrue(chat.loaded)
+
+        connection.unwatchPostHogCloudRun("r1")
+        assertNull(connection.cloudChat.value)
+        assertNull(connection.cloudRun.value)
+        withTimeout(5_000) { while (sent("unwatch_posthog_cloud_run").isEmpty()) delay(10) }
+        assertEquals("r1", sent("watch_posthog_cloud_run").single()["run_id"]?.jsonPrimitive?.content)
+        connection.stop()
     }
 
     @Test

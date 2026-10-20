@@ -40,6 +40,10 @@ Usage:
   muxer devices                                 List paired phones
   muxer revoke DEVICE_ID                        Remove a paired phone
   muxer doctor                                  Check cmux, socket access, and the relay setup
+  muxer posthog-cloud connect [--host URL] [--project ID]
+                                                Show your PostHog Tasks cloud runs in the app
+  muxer posthog-cloud disconnect                Forget the PostHog API key
+  muxer posthog-cloud status                    Show the connected PostHog account
   muxer serve [--listen ADDR] [--name NAME]     Run the relay in the foreground
   muxer version
 `
@@ -66,6 +70,8 @@ func main() {
 		err = runUninstall()
 	case "doctor":
 		err = runDoctor(args)
+	case "posthog-cloud":
+		err = runPostHogCloud(args)
 	case "version", "--version":
 		fmt.Println(version)
 	case "help", "--help", "-h":
@@ -132,7 +138,7 @@ func runServe(args []string) error {
 	agentFinder := host.NewAgentFinder(host.LoginShell(), server.TaskAgents...)
 	go agentFinder.Installed(ctx)
 
-	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, InstalledAgents: agentFinder.Installed, LoginShell: host.LoginShell(), Tailnet: tailnet.CLI{}, Listeners: host.Listeners, ListeningProcesses: host.ListeningProcesses, ParentProcesses: host.ParentProcesses, ExposedPorts: paths.exposedPorts, RelayPort: relayPort(listen)}, logger)
+	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, InstalledAgents: agentFinder.Installed, LoginShell: host.LoginShell(), Tailnet: tailnet.CLI{}, Listeners: host.Listeners, ListeningProcesses: host.ListeningProcesses, ParentProcesses: host.ParentProcesses, ExposedPorts: paths.exposedPorts, RelayPort: relayPort(listen), PostHogCloudConfig: paths.postHogCloud}, logger)
 	categories := slices.Concat([]string{"notification"}, agents.EventCategories, server.WorkspaceEventCategories)
 	go events.NewStream(client, logger, cmux.EventFilter{Categories: categories}, hub, approvalTracker, agentTracker, relay).Run(ctx)
 	httpServer := &http.Server{

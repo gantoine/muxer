@@ -153,6 +153,20 @@ Run `cmux automation reload` after editing the file, and `cmux automation test p
 
 On the phone, open a computer's settings and tap **Automations** to see its rules. You can turn each one on or off, see what it reacts to and what it does, read its recent activity, and reload the file after you edit it. Writing new rules still happens in the file on the computer.
 
+## PostHog Cloud runs
+
+If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the Devices list can show your recent tasks under **PostHog Cloud**. Tap one to follow its latest run as a chat: its messages, tool calls, approval requests and status, with buttons for its pull request and for the task in PostHog. For now you can only read runs from the phone. Replying and approving still happen in PostHog.
+
+Create a personal API key in PostHog under **Settings › Personal API keys** with the `task:read`, `task:write` and `user:read` scopes, then connect the relay to it:
+
+```sh
+muxer posthog-cloud connect                 # US cloud; add --host https://eu.posthog.com for EU
+muxer posthog-cloud status
+muxer posthog-cloud disconnect
+```
+
+`connect` asks for the key without echoing it (or reads `POSTHOG_PERSONAL_API_KEY`), checks it, and saves it in the relay's state folder, readable only by you. The relay asks PostHog for your tasks directly. The key never reaches the phone.
+
 ## Updating the relay
 
 ```sh

@@ -72,6 +72,7 @@ fun MacsScreen(
     onOpenSettings: (Mac) -> Unit,
     onAddMac: () -> Unit,
     onOpenAppSettings: () -> Unit,
+    onOpenCloudTask: (HostedCloudTask) -> Unit,
 ) {
     val macs by app.store.macs.collectAsState(initial = null)
     val connections by app.connections.connectionsFlow.collectAsState()
@@ -80,6 +81,7 @@ fun MacsScreen(
     val snackbar = remember { SnackbarHostState() }
     val cloud = rememberCloudVms(app, macs.orEmpty().map { it.id })
     val vms = cloud.vms
+    val cloudTasks = rememberPostHogCloud(app, macs.orEmpty().map { it.id }).tasks
     val usage = rememberHostUsage(app)
 
     fun setPaused(hosted: HostedVm, paused: Boolean) {
@@ -137,7 +139,7 @@ fun MacsScreen(
                 contentPadding = PaddingValues(top = 8.dp, bottom = 112.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                if (vms != null) item(key = "computers-label") { SectionLabel("Computers", Modifier.animateItem(), top = 0.dp) }
+                if (vms != null || cloudTasks != null) item(key = "computers-label") { SectionLabel("Computers", Modifier.animateItem(), top = 0.dp) }
                 itemsIndexed(list, key = { _, mac -> mac.id }) { index, mac ->
                     val state by connections[mac.id].collectOr(ConnectionState.Stopped) { it.state }
                     val keepAwake by connections[mac.id].collectOr(null) { it.keepAwake }
@@ -171,6 +173,27 @@ fun MacsScreen(
                             shape = groupedShape(index, vms.size),
                             onOpen = { dialog = MacDialog.Vm(hosted.vm.id) },
                             onSetPaused = { setPaused(hosted, it) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
+                if (cloudTasks != null) {
+                    item(key = "posthog-cloud-label") { SectionLabel("PostHog Cloud", Modifier.animateItem()) }
+                    if (cloudTasks.isEmpty()) {
+                        item(key = "posthog-cloud-empty") {
+                            Text(
+                                "No PostHog Cloud tasks yet.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.animateItem().padding(horizontal = 28.dp, vertical = 8.dp),
+                            )
+                        }
+                    }
+                    itemsIndexed(cloudTasks, key = { _, hosted -> "posthog-task-${hosted.task.id}" }) { index, hosted ->
+                        CloudTaskRow(
+                            task = hosted.task,
+                            shape = groupedShape(index, cloudTasks.size),
+                            onOpen = { onOpenCloudTask(hosted) },
                             modifier = Modifier.animateItem(),
                         )
                     }

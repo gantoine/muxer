@@ -71,6 +71,7 @@ type session struct {
 
 	mu       sync.Mutex
 	attached *attachment
+	cloudRun *cloudRunWatch
 	started  bool
 
 	parallelSlots chan struct{}
@@ -99,6 +100,7 @@ var parallelRequests = map[string]bool{
 	"expose_port":            true,
 	"unexpose_port":          true,
 	"exposed_ports":          true,
+	"posthog_cloud_tasks":    true,
 }
 
 func newSession(server *Server, conn *websocket.Conn, device devices.Device) *session {
@@ -505,6 +507,20 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 			return nil, invalid("set_vm_paused needs vm_id and paused.")
 		}
 		return s.server.setVMPaused(ctx, request.VMID, *request.Paused)
+	case "posthog_cloud_tasks":
+		return s.server.postHogCloudTasks(ctx)
+	case "watch_posthog_cloud_run":
+		var request struct {
+			TaskID string `json:"task_id"`
+			RunID  string `json:"run_id"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || request.TaskID == "" || request.RunID == "" {
+			return nil, invalid("watch_posthog_cloud_run needs task_id and run_id.")
+		}
+		return nil, s.watchPostHogCloudRun(request.TaskID, request.RunID)
+	case "unwatch_posthog_cloud_run":
+		s.unwatchPostHogCloudRun()
+		return nil, nil
 	case "automations":
 		return s.server.automations(ctx)
 	case "set_automation_enabled":
