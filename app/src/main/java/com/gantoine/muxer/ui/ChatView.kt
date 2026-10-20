@@ -126,6 +126,7 @@ fun ChatView(
     onShowTerminal: () -> Unit,
     chatImages: RemoteImages,
     modifier: Modifier = Modifier,
+    canAttachImages: Boolean = true,
     overlay: @Composable () -> Unit = {},
 ) {
     val working = midTurn || status is AgentStatus.Working
@@ -208,6 +209,7 @@ fun ChatView(
             onPickPhotos = onPickPhotos,
             onTakePhoto = onTakePhoto,
             onRemoveImage = onRemoveImage,
+            canAttachImages = canAttachImages,
             onSend = onSend,
             onDictate = onDictate,
             dictating = dictating,
@@ -514,6 +516,7 @@ private fun ChatComposer(
     onPickPhotos: () -> Unit,
     onTakePhoto: () -> Unit,
     onRemoveImage: (Uri) -> Unit,
+    canAttachImages: Boolean,
     onSend: () -> Unit,
     onDictate: () -> Unit,
     dictating: Boolean,
@@ -535,7 +538,11 @@ private fun ChatComposer(
                     onDraftChange(it.text)
                 },
                 placeholder = { Text(if (messagingAgent) "Send message after you answer" else "Message $agentName") },
-                leadingIcon = { AttachImageButton(enabled = !sendingImages, onPickPhotos = onPickPhotos, onTakePhoto = onTakePhoto) },
+                leadingIcon = if (canAttachImages) {
+                    { AttachImageButton(enabled = !sendingImages, onPickPhotos = onPickPhotos, onTakePhoto = onTakePhoto) }
+                } else {
+                    null
+                },
                 maxLines = 6,
                 shape = ComposerShape,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true),

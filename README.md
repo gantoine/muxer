@@ -155,7 +155,7 @@ On the phone, open a computer's settings and tap **Automations** to see its rule
 
 ## PostHog Cloud runs
 
-If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the Devices list can show your recent tasks under **PostHog Cloud**. Tap one to follow its latest run live as a chat: its messages, tool calls, approval requests and status, with buttons for its pull request and for the task in PostHog. The relay keeps following your runs that are in progress, so the list shows which ones are working, waiting for a reply or need your approval. For now you can only read runs from the phone. Replying and approving still happen in PostHog.
+If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the relay can follow your runs for you. It keeps watching the runs you have in progress, and the phone tells you when one needs your approval or finishes its turn. Open the alert to see the run as a chat: its messages, tool calls and status, with buttons for its pull request and for the task in PostHog. From there you can reply (a message sent while the agent works steers it), stop the agent, and answer its approvals, questions and plans. A reply to a finished run reopens it.
 
 Create a personal API key in PostHog under **Settings › Personal API keys** with the `task:read`, `task:write` and `user:read` scopes, then connect the relay to it:
 
@@ -163,9 +163,12 @@ Create a personal API key in PostHog under **Settings › Personal API keys** wi
 muxer posthog-cloud connect                 # US cloud; add --host https://eu.posthog.com for EU
 muxer posthog-cloud status
 muxer posthog-cloud disconnect
+muxer posthog-cloud claude-token            # optional, see below
 ```
 
 `connect` asks for the key without echoing it (or reads `POSTHOG_PERSONAL_API_KEY`), checks it, and saves it in the relay's state folder, readable only by you. The relay asks PostHog for your tasks directly. The key never reaches the phone.
+
+A cloud run on your own Claude plan asks for a Claude token when it starts and waits two minutes for one. Run `claude setup-token`, then `muxer posthog-cloud claude-token` and paste the token it printed. The relay then answers those requests for runs you started, so they start even when no other PostHog app is open. `muxer posthog-cloud claude-token --clear` forgets it.
 
 ## Updating the relay
 

@@ -100,7 +100,7 @@ class Notifier(
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setGroup(mac.id)
-            .setContentIntent(openTerminalIntent(mac.id, notification.workspaceId, notification.surfaceId, notification.id.hashCode()))
+            .setContentIntent(contentIntent(mac.id, notification.workspaceId, notification.surfaceId, notification.posthogTaskId, notification.posthogRunId, notification.id.hashCode()))
             .setDeleteIntent(NotificationReadReceiver.notificationIntent(context, mac.id, notification.id))
             .hiddenOnLockScreen(context, requireUnlock(), channel, LockScreenText.NEW_NOTIFICATION)
             .build()
@@ -177,14 +177,16 @@ class Notifier(
             .setSubText(mac.name)
             .setContentText(summary)
             .setStyle(style)
-            .setShortcutId(ConversationShortcuts.id(mac.id, approval.workspaceId))
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setGroup(mac.id)
-            .setContentIntent(openTerminalIntent(mac.id, approval.workspaceId, approval.surfaceId, notificationId))
+            .setContentIntent(contentIntent(mac.id, approval.workspaceId, approval.surfaceId, approval.posthogTaskId, approval.posthogRunId, notificationId))
             .hiddenOnLockScreen(context, requireUnlock(), APPROVALS_CHANNEL, LockScreenText.NEEDS_YOU)
         approvalActions(mac.id, approval).forEach(builder::addAction)
-        bubble(target, notificationId)?.let(builder::setBubbleMetadata)
+        if (!approval.isPostHogCloud) {
+            builder.setShortcutId(ConversationShortcuts.id(mac.id, approval.workspaceId))
+            bubble(target, notificationId)?.let(builder::setBubbleMetadata)
+        }
         post(notificationId, builder.build())
     }
 
@@ -194,10 +196,10 @@ class Notifier(
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Your answer didn't reach $macName")
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText("$message\nOpen the terminal to answer there."))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(if (approval.posthogRunId != null) "$message\nOpen the run to answer there." else "$message\nOpen the terminal to answer there."))
             .setAutoCancel(true)
             .setGroup(approval.macId)
-            .setContentIntent(openTerminalIntent(approval.macId, approval.workspaceId, approval.surfaceId, approvalNotificationId(approval.approvalId)))
+            .setContentIntent(contentIntent(approval.macId, approval.workspaceId, approval.surfaceId, approval.posthogTaskId, approval.posthogRunId, approvalNotificationId(approval.approvalId)))
             .hiddenOnLockScreen(context, requireUnlock(), APPROVALS_CHANNEL, LockScreenText.NEW_NOTIFICATION)
             .build()
         post(approvalNotificationId(approval.approvalId), built)
@@ -214,7 +216,7 @@ class Notifier(
     }
 
     private fun approvalActions(macId: String, approval: Approval): List<NotificationCompat.Action> {
-        val target = ApprovalTarget(macId, approval.id, approval.workspaceId, approval.surfaceId)
+        val target = ApprovalTarget.of(macId, approval)
         fun action(label: String, intent: PendingIntent) =
             NotificationCompat.Action.Builder(0, label, intent).setAuthenticationRequired(requireUnlock()).build()
         val decisions = Approvals.decisions(approval)
@@ -297,6 +299,18 @@ class Notifier(
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
+    private fun contentIntent(macId: String, workspaceId: String?, surfaceId: String?, posthogTaskId: String?, posthogRunId: String?, requestCode: Int): PendingIntent =
+        if (posthogTaskId == null || posthogRunId == null) {
+            openTerminalIntent(macId, workspaceId, surfaceId, requestCode)
+        } else {
+            PendingIntent.getActivity(
+                context,
+                requestCode,
+                openPostHogCloudRun(context, macId, posthogTaskId, posthogRunId),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
+
     private fun approvalNotificationId(approvalId: String): Int = "approval:$approvalId".hashCode()
 
     companion object {
@@ -310,10 +324,24 @@ class Notifier(
         const val EXTRA_MAC_ID = "mac_id"
         const val EXTRA_WORKSPACE_ID = "workspace_id"
         const val EXTRA_SURFACE_ID = "surface_id"
+        const val EXTRA_POSTHOG_TASK_ID = "posthog_task_id"
+        const val EXTRA_POSTHOG_RUN_ID = "posthog_run_id"
 
         const val OPEN_TERMINAL_ALIAS = "com.gantoine.muxer.OpenTerminalActivity"
 
         fun openTerminalComponent(context: Context): ComponentName = ComponentName(context.packageName, OPEN_TERMINAL_ALIAS)
+
+        fun openPostHogCloudRun(context: Context, macId: String, taskId: String, runId: String): Intent =
+            openTerminal(context, macId, null, null)
+                .putExtra(EXTRA_POSTHOG_TASK_ID, taskId)
+                .putExtra(EXTRA_POSTHOG_RUN_ID, runId)
+
+        fun openFor(context: Context, macId: String, approval: Approval): Intent =
+            if (approval.isPostHogCloud) {
+                openPostHogCloudRun(context, macId, approval.posthogTaskId!!, approval.posthogRunId!!)
+            } else {
+                openTerminal(context, macId, approval.workspaceId, approval.surfaceId)
+            }
 
         fun openTerminal(context: Context, macId: String, workspaceId: String?, surfaceId: String?): Intent =
             Intent().apply {

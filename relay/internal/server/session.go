@@ -101,6 +101,9 @@ var parallelRequests = map[string]bool{
 	"unexpose_port":          true,
 	"exposed_ports":          true,
 	"posthog_cloud_tasks":    true,
+	"posthog_cloud_send":     true,
+	"posthog_cloud_stop":     true,
+	"answer_approval":        true,
 }
 
 func newSession(server *Server, conn *websocket.Conn, device devices.Device) *session {
@@ -462,10 +465,17 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 		if err := json.Unmarshal(raw, &request); err != nil || request.ApprovalID == "" {
 			return nil, invalid("answer_approval needs approval_id and either mode or answers.")
 		}
-		if s.server.options.Approvals == nil {
+		var err error
+		switch {
+		case strings.HasPrefix(request.ApprovalID, postHogCloudApprovalPrefix):
+			actionCtx, cancelAction := context.WithTimeout(s.ctx, postHogCloudActionTimeout)
+			defer cancelAction()
+			err = s.server.cloud.answer(actionCtx, request.ApprovalID, request.Answer)
+		case s.server.options.Approvals == nil:
 			return nil, &requestError{Code: "unsupported", Message: "This relay can't answer agent requests."}
+		default:
+			err = s.server.options.Approvals.Answer(ctx, request.ApprovalID, request.Answer)
 		}
-		err := s.server.options.Approvals.Answer(ctx, request.ApprovalID, request.Answer)
 		if errors.Is(err, approvals.ErrNotPending) {
 			return nil, &requestError{Code: "not_pending", Message: "That request was already answered or timed out."}
 		}
@@ -519,6 +529,31 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 			return nil, invalid("watch_posthog_cloud_run needs task_id and run_id.")
 		}
 		return nil, s.watchPostHogCloudRun(request.TaskID, request.RunID)
+	case "posthog_cloud_send", "posthog_cloud_stop":
+		var request struct {
+			TaskID string `json:"task_id"`
+			RunID  string `json:"run_id"`
+			Text   string `json:"text"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || request.TaskID == "" || request.RunID == "" {
+			return nil, invalid(kind + " needs task_id and run_id.")
+		}
+		client, _, ok, err := s.server.postHogCloudClient()
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errPostHogCloudNotConnected
+		}
+		actionCtx, cancelAction := context.WithTimeout(s.ctx, postHogCloudActionTimeout)
+		defer cancelAction()
+		if kind == "posthog_cloud_stop" {
+			return nil, s.server.cloud.stopTurn(actionCtx, client, request.TaskID, request.RunID)
+		}
+		if err := validText("posthog_cloud_send", request.Text); err != nil || strings.TrimSpace(request.Text) == "" {
+			return nil, invalid("posthog_cloud_send needs text.")
+		}
+		return nil, s.server.cloud.sendMessage(actionCtx, client, request.TaskID, request.RunID, strings.TrimSpace(request.Text))
 	case "unwatch_posthog_cloud_run":
 		s.unwatchPostHogCloudRun()
 		return nil, nil
@@ -741,18 +776,32 @@ func onEachChange(ctx context.Context, changes <-chan struct{}, push func()) {
 
 func (s *session) forwardApprovals() {
 	tracker := s.server.options.Approvals
-	if tracker == nil {
-		return
+	var trackerChanges <-chan struct{}
+	if tracker != nil {
+		changes, unsubscribe := tracker.Subscribe()
+		defer unsubscribe()
+		trackerChanges = changes
 	}
-	changes, unsubscribe := tracker.Subscribe()
-	defer unsubscribe()
-	onEachChange(s.ctx, changes, func() {
-		pending := tracker.Pending()
-		if pending == nil {
-			pending = []approvals.Approval{}
+	cloudChanges, unsubscribeCloud := s.server.cloud.changes.Subscribe()
+	defer unsubscribeCloud()
+	sent := false
+	for {
+		pending := []approvals.Approval{}
+		if tracker != nil {
+			pending = append(pending, tracker.Pending()...)
 		}
-		s.send(map[string]any{"type": "approvals", "approvals": pending})
-	})
+		pending = append(pending, s.server.cloud.approvals()...)
+		if tracker != nil || sent || len(pending) > 0 {
+			s.send(map[string]any{"type": "approvals", "approvals": pending})
+			sent = true
+		}
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-trackerChanges:
+		case <-cloudChanges:
+		}
+	}
 }
 
 func (s *session) forwardAgentActivity() {

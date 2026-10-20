@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/gantoine/muxer/relay/internal/chat"
@@ -68,21 +69,64 @@ type sessionUpdate struct {
 	Meta          toolMeta        `json:"_meta"`
 }
 
-type permissionOption struct {
+type permissionParams struct {
+	RequestID  string             `json:"requestId"`
+	ToolCallID string             `json:"toolCallId"`
+	OptionID   string             `json:"optionId"`
+	Options    []PermissionOption `json:"options"`
+	ToolCall   struct {
+		ToolCallID string          `json:"toolCallId"`
+		Title      string          `json:"title"`
+		Kind       string          `json:"kind"`
+		RawInput   json.RawMessage `json:"rawInput"`
+		Meta       struct {
+			CodeToolKind string         `json:"codeToolKind"`
+			Questions    []QuestionItem `json:"questions"`
+			ClaudeCode   struct {
+				ToolName string `json:"toolName"`
+			} `json:"claudeCode"`
+			PostHog struct {
+				ToolName string `json:"toolName"`
+			} `json:"posthog"`
+		} `json:"_meta"`
+	} `json:"toolCall"`
+}
+
+type QuestionOption struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+type QuestionItem struct {
+	Question    string           `json:"question"`
+	Header      string           `json:"header,omitempty"`
+	Options     []QuestionOption `json:"options"`
+	MultiSelect bool             `json:"multiSelect,omitempty"`
+}
+
+type PermissionOption struct {
 	OptionID string `json:"optionId"`
 	Kind     string `json:"kind"`
 	Name     string `json:"name"`
 }
 
-type permissionParams struct {
-	RequestID  string             `json:"requestId"`
-	ToolCallID string             `json:"toolCallId"`
-	OptionID   string             `json:"optionId"`
-	Options    []permissionOption `json:"options"`
-	ToolCall   struct {
-		ToolCallID string `json:"toolCallId"`
-		Title      string `json:"title"`
-	} `json:"toolCall"`
+const (
+	ApprovalPermission = "permission"
+	ApprovalQuestion   = "question"
+	ApprovalPlan       = "plan"
+)
+
+type PendingApproval struct {
+	RequestID  string
+	ToolCallID string
+	Kind       string
+	Tool       string
+	Title      string
+	Detail     string
+	Plan       string
+	Questions  []QuestionItem
+	Options    []PermissionOption
+	Time       string
 }
 
 type openChunk struct {
@@ -93,7 +137,8 @@ type openChunk struct {
 type approval struct {
 	entryID string
 	title   string
-	options []permissionOption
+	options []PermissionOption
+	pending PendingApproval
 }
 
 type Transcript struct {
@@ -331,8 +376,11 @@ func (t *Transcript) requestPermission(timestamp string, request permissionParam
 	if request.ToolCall.Title != "" {
 		pending.title = request.ToolCall.Title
 	}
-	if pending.options == nil {
+	if pending.options == nil && (!known || pending.pending.RequestID == "") {
 		pending.options = request.Options
+	}
+	if request.RequestID != "" && pending.pending.RequestID == "" {
+		pending.pending = describeApproval(key, timestamp, request)
 	}
 	if known {
 		return nil
@@ -359,6 +407,61 @@ func (t *Transcript) resolvePermission(resolved permissionParams) []chat.Entry {
 		}
 	}
 	return t.settle(pending, verdict)
+}
+
+func (t *Transcript) Pending() []PendingApproval {
+	var pending []PendingApproval
+	for _, candidate := range t.approvals {
+		if candidate.options != nil && candidate.pending.RequestID != "" {
+			pending = append(pending, candidate.pending)
+		}
+	}
+	slices.SortFunc(pending, func(a, b PendingApproval) int { return strings.Compare(a.Time+a.RequestID, b.Time+b.RequestID) })
+	return pending
+}
+
+func (t *Transcript) Resolve(requestID, optionID string) []chat.Entry {
+	for key, candidate := range t.approvals {
+		if candidate.pending.RequestID == requestID && candidate.options != nil {
+			return t.resolvePermission(permissionParams{ToolCallID: key, OptionID: optionID})
+		}
+	}
+	return nil
+}
+
+func describeApproval(key, timestamp string, request permissionParams) PendingApproval {
+	call := request.ToolCall
+	pending := PendingApproval{
+		RequestID:  request.RequestID,
+		ToolCallID: key,
+		Kind:       ApprovalPermission,
+		Tool:       firstNonEmpty(call.Meta.ClaudeCode.ToolName, call.Meta.PostHog.ToolName, toolKinds[call.Kind]),
+		Title:      call.Title,
+		Options:    request.Options,
+		Time:       timestamp,
+	}
+	var input map[string]any
+	_ = json.Unmarshal(call.RawInput, &input)
+	plan, _ := input["plan"].(string)
+	switch {
+	case call.Meta.CodeToolKind == "question" && len(call.Meta.Questions) > 0:
+		pending.Kind = ApprovalQuestion
+		pending.Questions = call.Meta.Questions
+	case plan != "" || hasOption(request.Options, "reject_with_feedback"):
+		pending.Kind = ApprovalPlan
+		pending.Plan = plan
+	default:
+		if _, value := claude.ToolInputValue(input); value != "" {
+			pending.Detail = chat.Truncate(strings.TrimSpace(value), 8000)
+		} else if call.Kind == "execute" {
+			pending.Detail = shellCommand(call.Title)
+		}
+	}
+	return pending
+}
+
+func hasOption(options []PermissionOption, optionID string) bool {
+	return slices.ContainsFunc(options, func(option PermissionOption) bool { return option.OptionID == optionID })
 }
 
 func (t *Transcript) settleApprovals() []chat.Entry {

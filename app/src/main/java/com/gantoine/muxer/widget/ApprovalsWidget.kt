@@ -124,7 +124,7 @@ private fun LockedApprovals(waiting: Int) {
 private fun ApprovalRow(item: ApprovalItem) {
     val context = LocalContext.current
     val approval = item.approval
-    val open = actionStartActivity(Notifier.openTerminal(context, item.macId, approval.workspaceId, approval.surfaceId))
+    val open = actionStartActivity(Notifier.openFor(context, item.macId, approval))
     Column(
         GlanceModifier
             .fillMaxWidth()
@@ -165,7 +165,7 @@ private fun ApprovalRow(item: ApprovalItem) {
 }
 
 private fun buttonAction(context: Context, item: ApprovalItem, button: ApprovalButton, open: Action): Action {
-    val target = ApprovalTarget(item.macId, item.approval.id, item.approval.workspaceId, item.approval.surfaceId)
+    val target = ApprovalTarget.of(item.macId, item.approval)
     return when (button) {
         is ApprovalButton.Decide ->
             actionSendBroadcast(ApprovalActionReceiver.broadcastIntent(context, target, mode = button.mode))

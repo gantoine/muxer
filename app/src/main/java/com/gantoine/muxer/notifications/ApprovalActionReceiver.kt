@@ -8,9 +8,22 @@ import androidx.core.app.RemoteInput
 import com.gantoine.muxer.MuxerApplication
 import com.gantoine.muxer.lock.DeviceAuth
 import com.gantoine.muxer.model.ApprovalReply
+import com.gantoine.muxer.protocol.Approval
 import kotlinx.coroutines.launch
 
-data class ApprovalTarget(val macId: String, val approvalId: String, val workspaceId: String, val surfaceId: String)
+data class ApprovalTarget(
+    val macId: String,
+    val approvalId: String,
+    val workspaceId: String,
+    val surfaceId: String,
+    val posthogTaskId: String? = null,
+    val posthogRunId: String? = null,
+) {
+    companion object {
+        fun of(macId: String, approval: Approval) =
+            ApprovalTarget(macId, approval.id, approval.workspaceId, approval.surfaceId, approval.posthogTaskId, approval.posthogRunId)
+    }
+}
 
 class ApprovalActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -20,6 +33,8 @@ class ApprovalActionReceiver : BroadcastReceiver() {
             approvalId = intent.getStringExtra(EXTRA_APPROVAL_ID) ?: return,
             workspaceId = intent.getStringExtra(Notifier.EXTRA_WORKSPACE_ID).orEmpty(),
             surfaceId = intent.getStringExtra(Notifier.EXTRA_SURFACE_ID).orEmpty(),
+            posthogTaskId = intent.getStringExtra(Notifier.EXTRA_POSTHOG_TASK_ID),
+            posthogRunId = intent.getStringExtra(Notifier.EXTRA_POSTHOG_RUN_ID),
         )
         val typed = intent.getBooleanExtra(EXTRA_TYPED, false)
         val answer = if (typed) typedAnswer(intent) ?: return else intent.getStringExtra(EXTRA_ANSWER)
@@ -83,5 +98,7 @@ class ApprovalActionReceiver : BroadcastReceiver() {
                 .setAction(action)
                 .putTarget(ConversationTarget(target.macId, target.workspaceId, target.surfaceId))
                 .putExtra(EXTRA_APPROVAL_ID, target.approvalId)
+                .putExtra(Notifier.EXTRA_POSTHOG_TASK_ID, target.posthogTaskId)
+                .putExtra(Notifier.EXTRA_POSTHOG_RUN_ID, target.posthogRunId)
     }
 }

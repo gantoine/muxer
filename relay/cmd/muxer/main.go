@@ -44,6 +44,7 @@ Usage:
                                                 Show your PostHog Tasks cloud runs in the app
   muxer posthog-cloud disconnect                Forget the PostHog API key
   muxer posthog-cloud status                    Show the connected PostHog account
+  muxer posthog-cloud claude-token [--clear]    Save a ` + "`claude setup-token`" + ` token for runs on your Claude plan
   muxer serve [--listen ADDR] [--name NAME]     Run the relay in the foreground
   muxer version
 `

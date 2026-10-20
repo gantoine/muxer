@@ -81,6 +81,8 @@ type Approval struct {
 	Plan        string     `json:"plan,omitempty"`
 	Cwd         string     `json:"cwd,omitempty"`
 	CreatedAt   string     `json:"created_at,omitempty"`
+	PostHogTask string     `json:"posthog_task_id,omitempty"`
+	PostHogRun  string     `json:"posthog_run_id,omitempty"`
 }
 
 type Answer struct {

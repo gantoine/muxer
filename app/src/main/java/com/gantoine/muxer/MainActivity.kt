@@ -49,6 +49,10 @@ class MainActivity : FragmentActivity() {
         if (intent.action == ACTION_PAIR) return LaunchTarget.PairComputer
         if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) return shareTarget(intent)
         if (intent.action == Notifier.ACTION_OPEN_TERMINAL && intent.component?.className == Notifier.OPEN_TERMINAL_ALIAS) {
+            val macId = intent.getStringExtra(Notifier.EXTRA_MAC_ID)
+            val taskId = intent.getStringExtra(Notifier.EXTRA_POSTHOG_TASK_ID)
+            val runId = intent.getStringExtra(Notifier.EXTRA_POSTHOG_RUN_ID)
+            if (macId != null && taskId != null && runId != null) return LaunchTarget.PostHogCloudRun(macId, taskId, runId)
             val target = intent.conversationTarget() ?: return null
             return LaunchTarget.Terminal(target.macId, target.workspaceId, target.surfaceId)
         }

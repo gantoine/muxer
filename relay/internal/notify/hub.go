@@ -30,6 +30,8 @@ type Notification struct {
 	SurfaceID   string `json:"surface_id,omitempty"`
 	TabTitle    string `json:"tab_title,omitempty"`
 	CreatedAt   string `json:"created_at,omitempty"`
+	PostHogTask string `json:"posthog_task_id,omitempty"`
+	PostHogRun  string `json:"posthog_run_id,omitempty"`
 }
 
 type Source interface {
@@ -106,6 +108,10 @@ func (h *Hub) lookup(ctx context.Context, id string) (cmux.Notification, bool) {
 		}
 	}
 	return cmux.Notification{}, false
+}
+
+func (h *Hub) Publish(notification Notification) {
+	h.publish(notification)
 }
 
 func (h *Hub) publish(notification Notification) {

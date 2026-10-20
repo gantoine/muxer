@@ -3,7 +3,6 @@ package com.gantoine.muxer.ui
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -20,6 +19,7 @@ import kotlinx.coroutines.flow.first
 sealed interface LaunchTarget {
     data class Pair(val url: String, val code: String) : LaunchTarget
     data class Terminal(val macId: String, val workspaceId: String, val surfaceId: String) : LaunchTarget
+    data class PostHogCloudRun(val macId: String, val taskId: String, val runId: String) : LaunchTarget
     data object PairComputer : LaunchTarget
     data class Share(val text: String, val shortcutId: String?, val images: List<Uri> = emptyList()) : LaunchTarget
 }
@@ -67,7 +67,6 @@ private object Routes {
 @Composable
 fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTargetHandled: () -> Unit) {
     val navController = rememberNavController()
-    val uriHandler = LocalUriHandler.current
 
     LaunchedEffect(launchTarget) {
         when (launchTarget) {
@@ -78,6 +77,8 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 navController.navigate(Routes.pair())
             }
             is LaunchTarget.Terminal -> navController.openTerminal(launchTarget.macId, launchTarget.workspaceId, launchTarget.surfaceId)
+            is LaunchTarget.PostHogCloudRun ->
+                navController.navigate(Routes.postHogCloudRun(launchTarget.macId, launchTarget.taskId, launchTarget.runId, "", ""))
             is LaunchTarget.Share -> {
                 val route = ShareRouting.route(
                     shortcutId = launchTarget.shortcutId,
@@ -104,15 +105,6 @@ fun AppNavigation(app: MuxerApplication, launchTarget: LaunchTarget?, onLaunchTa
                 onOpenSettings = { navController.navigate(Routes.settings(it.id)) },
                 onAddMac = { navController.navigate(Routes.pair()) },
                 onOpenAppSettings = { navController.navigate(Routes.APP_SETTINGS) },
-                onOpenCloudTask = { hosted ->
-                    val task = hosted.task
-                    val runId = task.runId
-                    if (runId == null) {
-                        if (task.url.isNotBlank()) uriHandler.openUri(task.url)
-                    } else {
-                        navController.navigate(Routes.postHogCloudRun(hosted.macId, task.id, runId, PostHogCloud.title(task), task.url))
-                    }
-                },
             )
         }
         composable(

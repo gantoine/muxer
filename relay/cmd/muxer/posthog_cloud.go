@@ -15,11 +15,15 @@ import (
 	"github.com/gantoine/muxer/relay/internal/posthogcloud"
 )
 
-const postHogAPIKeyEnv = "POSTHOG_PERSONAL_API_KEY"
+const (
+	postHogAPIKeyEnv     = "POSTHOG_PERSONAL_API_KEY"
+	claudeTokenEnv       = "CLAUDE_CODE_OAUTH_TOKEN"
+	maxClaudeTokenLength = 4096
+)
 
 func runPostHogCloud(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: muxer posthog-cloud connect|disconnect|status")
+		return errors.New("usage: muxer posthog-cloud connect|disconnect|status|claude-token")
 	}
 	paths, err := statePaths()
 	if err != nil {
@@ -44,7 +48,12 @@ func runPostHogCloud(args []string) error {
 			return nil
 		}
 		fmt.Printf("Connected to %s, project %d, as %s.\n", config.Host, config.ProjectID, config.Email)
+		if config.ClaudeToken != "" {
+			fmt.Println("A Claude token is saved for runs on your Claude plan.")
+		}
 		return nil
+	case "claude-token":
+		return saveClaudeToken(paths, args[1:])
 	}
 	return fmt.Errorf("unknown posthog-cloud command %q", args[0])
 }
@@ -78,6 +87,9 @@ func connectPostHogCloud(paths paths, args []string) error {
 	if _, err := posthogcloud.NewClient(config, nil).Tasks(ctx, 1); err != nil {
 		return fmt.Errorf("read tasks in project %d: %w", config.ProjectID, err)
 	}
+	if previous, ok, _ := posthogcloud.LoadConfig(paths.postHogCloud); ok && previous.UserID == config.UserID {
+		config.ClaudeToken = previous.ClaudeToken
+	}
 	if err := os.MkdirAll(paths.dir, 0o700); err != nil {
 		return err
 	}
@@ -88,13 +100,57 @@ func connectPostHogCloud(paths paths, args []string) error {
 	return nil
 }
 
+func saveClaudeToken(paths paths, args []string) error {
+	flags := flag.NewFlagSet("posthog-cloud claude-token", flag.ContinueOnError)
+	forget := flags.Bool("clear", false, "forget the saved Claude token")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	config, ok, err := posthogcloud.LoadConfig(paths.postHogCloud)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("connect PostHog Cloud first with `muxer posthog-cloud connect`")
+	}
+	if *forget {
+		config.ClaudeToken = ""
+		if err := posthogcloud.SaveConfig(paths.postHogCloud, config); err != nil {
+			return err
+		}
+		fmt.Println("Forgot the Claude token. Runs on your Claude plan need another client to start them now.")
+		return nil
+	}
+	token := strings.TrimSpace(os.Getenv(claudeTokenEnv))
+	if token == "" {
+		fmt.Println("Run `claude setup-token` in another terminal and copy the token it prints.")
+		token, err = readSecret("Paste it here: ")
+		if err != nil {
+			return err
+		}
+	}
+	if len(token) > maxClaudeTokenLength {
+		return errors.New("that token is longer than PostHog accepts")
+	}
+	config.ClaudeToken = token
+	if err := posthogcloud.SaveConfig(paths.postHogCloud, config); err != nil {
+		return err
+	}
+	fmt.Println("Saved. The relay hands it to cloud runs you start on your Claude plan when they ask for it.")
+	return nil
+}
+
 func readAPIKey() (string, error) {
 	if key := strings.TrimSpace(os.Getenv(postHogAPIKeyEnv)); key != "" {
 		return key, nil
 	}
 	fmt.Println("Create a personal API key in PostHog under Settings › Personal API keys,")
 	fmt.Println("with the task:read, task:write and user:read scopes.")
-	fmt.Print("Paste it here: ")
+	return readSecret("Paste it here: ")
+}
+
+func readSecret(prompt string) (string, error) {
+	fmt.Print(prompt)
 	var raw []byte
 	var err error
 	if term.IsTerminal(int(os.Stdin.Fd())) {
@@ -111,9 +167,9 @@ func readAPIKey() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	key := strings.TrimSpace(string(raw))
-	if key == "" {
-		return "", errors.New("no API key given")
+	secret := strings.TrimSpace(string(raw))
+	if secret == "" {
+		return "", errors.New("nothing was pasted")
 	}
-	return key, nil
+	return secret, nil
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/devices"
 	"github.com/gantoine/muxer/relay/internal/host"
+	"github.com/gantoine/muxer/relay/internal/notify"
 )
 
 type fakeCmux struct {
@@ -538,6 +539,11 @@ func startRelay(t *testing.T) testRelay {
 
 func startRelayWith(t *testing.T, configure func(*Options)) testRelay {
 	t.Helper()
+	return startRelayWithHub(t, configure, nil)
+}
+
+func startRelayWithHub(t *testing.T, configure func(*Options), hub *notify.Hub) testRelay {
+	t.Helper()
 	store, err := devices.Open(filepath.Join(t.TempDir(), "devices.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -563,9 +569,14 @@ func startRelayWith(t *testing.T, configure func(*Options)) testRelay {
 	if configure != nil {
 		configure(&options)
 	}
-	relay := New(fake, store, nil, options, logger)
+	relay := New(fake, store, hub, options, logger)
 	server := httptest.NewServer(relay.Handler())
 	t.Cleanup(server.Close)
+	t.Cleanup(func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		relay.Close(closeCtx)
+	})
 	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir, piDir: piDir, tailnet: tailnet}
 }
 

@@ -7,6 +7,7 @@ import (
 	"io"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,11 +39,19 @@ func (e *StreamError) Error() string {
 }
 
 type Update struct {
-	Reset   bool
-	Entries []chat.Entry
-	Run     *Run
-	State   string
-	Err     error
+	Reset      bool
+	Entries    []chat.Entry
+	Run        *Run
+	State      string
+	Approvals  bool
+	Credential *CredentialRequest
+	Err        error
+}
+
+type CredentialRequest struct {
+	RequestID  string    `json:"requestId"`
+	Credential string    `json:"credential"`
+	ExpiresAt  time.Time `json:"expiresAt"`
 }
 
 type FollowerOptions struct {
@@ -83,6 +92,28 @@ func (f *Follower) Snapshot() (entries []chat.Entry, run Run, state string, read
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.transcript.Entries(), f.run, f.transcript.State(), f.ready
+}
+
+func (f *Follower) Pending() []PendingApproval {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.transcript.Pending()
+}
+
+func (f *Follower) Last(kind string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	entries := f.transcript.Entries()
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Kind == kind {
+			return entries[i].Text
+		}
+	}
+	return ""
+}
+
+func (f *Follower) Resolve(requestID, optionID string) {
+	f.feed(func(t *Transcript) []chat.Entry { return t.Resolve(requestID, optionID) })
 }
 
 func (f *Follower) Run(ctx context.Context) error {
@@ -253,6 +284,12 @@ func (f *Follower) handle(event Event) error {
 	case "permission_request":
 		f.feed(func(t *Transcript) []chat.Entry { return t.FeedPermissionRequest(event.Data, frame.Timestamp) })
 		return nil
+	case "credential_request":
+		var request CredentialRequest
+		if json.Unmarshal(event.Data, &request) == nil && request.RequestID != "" {
+			f.emit(Update{Credential: &request})
+		}
+		return nil
 	}
 	if len(frame.Notification) == 0 || f.coverage.covers(frame.EventID) {
 		return nil
@@ -264,14 +301,16 @@ func (f *Follower) handle(event Event) error {
 func (f *Follower) feed(apply func(*Transcript) []chat.Entry) {
 	f.mu.Lock()
 	before := f.transcript.State()
+	pendingBefore := requestIDs(f.transcript.Pending())
 	changed := apply(f.transcript)
 	state := f.transcript.State()
+	approvalsChanged := requestIDs(f.transcript.Pending()) != pendingBefore
 	run := f.run
 	f.mu.Unlock()
-	if len(changed) == 0 && state == before {
+	if len(changed) == 0 && state == before && !approvalsChanged {
 		return
 	}
-	update := Update{Entries: changed, State: state}
+	update := Update{Entries: changed, State: state, Approvals: approvalsChanged}
 	if state != before {
 		update.Run = &run
 	}
@@ -321,8 +360,16 @@ func (f *Follower) reload(ctx context.Context) error {
 	entries := transcript.Entries()
 	state := transcript.State()
 	f.mu.Unlock()
-	f.emit(Update{Reset: true, Entries: entries, Run: &run, State: state})
+	f.emit(Update{Reset: true, Entries: entries, Run: &run, State: state, Approvals: true})
 	return nil
+}
+
+func requestIDs(pending []PendingApproval) string {
+	ids := make([]string, len(pending))
+	for i, approval := range pending {
+		ids[i] = approval.RequestID
+	}
+	return strings.Join(ids, ",")
 }
 
 func (f *Follower) setRun(run Run) {

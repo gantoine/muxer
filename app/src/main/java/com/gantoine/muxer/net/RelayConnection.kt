@@ -37,7 +37,6 @@ import com.gantoine.muxer.protocol.PostHogCloudChatMessage
 import com.gantoine.muxer.protocol.PostHogCloudRun
 import com.gantoine.muxer.protocol.PostHogCloudRunErrorMessage
 import com.gantoine.muxer.protocol.PostHogCloudRunMessage
-import com.gantoine.muxer.protocol.PostHogCloudTasksResponse
 import com.gantoine.muxer.protocol.RecentSession
 import com.gantoine.muxer.protocol.RecentSessionsResponse
 import com.gantoine.muxer.protocol.RelayJson
@@ -550,9 +549,6 @@ class RelayConnection(
 
     suspend fun hostUsage(): Result<HostUsage> = requestAs("host_usage", missing = "The computer sent no usage.")
 
-    suspend fun postHogCloudTasks(): Result<PostHogCloudTasksResponse> =
-        requestAs("posthog_cloud_tasks", missing = "The computer sent no PostHog Cloud tasks.")
-
     fun watchPostHogCloudRun(taskId: String, runId: String) {
         if (cloudWatch?.second != runId) {
             _cloudChat.value = ChatState(runId)
@@ -571,6 +567,19 @@ class RelayConnection(
         _cloudRunError.value = null
         send("unwatch_posthog_cloud_run")
     }
+
+    suspend fun postHogCloudSend(taskId: String, runId: String, text: String): Result<Unit> =
+        request("posthog_cloud_send", buildJsonObject {
+            put("task_id", taskId)
+            put("run_id", runId)
+            put("text", text)
+        }).map { }
+
+    suspend fun postHogCloudStop(taskId: String, runId: String): Result<Unit> =
+        request("posthog_cloud_stop", buildJsonObject {
+            put("task_id", taskId)
+            put("run_id", runId)
+        }).map { }
 
     private fun sendCloudWatch(taskId: String, runId: String) {
         scope.launch {

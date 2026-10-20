@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Host      string `json:"host"`
-	ProjectID int    `json:"project_id"`
-	APIKey    string `json:"api_key"`
-	UserID    int    `json:"user_id"`
-	Email     string `json:"email,omitempty"`
+	Host        string `json:"host"`
+	ProjectID   int    `json:"project_id"`
+	APIKey      string `json:"api_key"`
+	UserID      int    `json:"user_id"`
+	Email       string `json:"email,omitempty"`
+	ClaudeToken string `json:"claude_token,omitempty"`
 }
 
 func LoadConfig(path string) (Config, bool, error) {

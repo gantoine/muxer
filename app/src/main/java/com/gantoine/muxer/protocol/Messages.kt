@@ -148,6 +148,8 @@ data class RelayNotification(
     val surfaceId: String? = null,
     val tabTitle: String? = null,
     val createdAt: String? = null,
+    val posthogTaskId: String? = null,
+    val posthogRunId: String? = null,
 )
 
 @Serializable
@@ -194,7 +196,10 @@ data class Approval(
     val plan: String? = null,
     val cwd: String? = null,
     val createdAt: String? = null,
+    val posthogTaskId: String? = null,
+    val posthogRunId: String? = null,
 ) {
+    val isPostHogCloud: Boolean get() = posthogTaskId != null && posthogRunId != null
     val isPermission: Boolean get() = kind == KIND_PERMISSION
     val isQuestion: Boolean get() = kind == KIND_QUESTION
     val isPlan: Boolean get() = kind == KIND_PLAN
@@ -382,26 +387,11 @@ data class CloudVm(
 data class CloudVmsResponse(val vms: List<CloudVm> = emptyList(), val plan: String? = null)
 
 @Serializable
-data class PostHogCloudTask(
-    val id: String,
-    val number: Int? = null,
-    val title: String = "",
-    val repository: String? = null,
-    val runId: String? = null,
-    val status: String = "not_started",
-    val state: String? = null,
-    val error: String? = null,
-    val updatedAt: String? = null,
-    val url: String = "",
-)
-
-@Serializable
-data class PostHogCloudTasksResponse(val connected: Boolean = false, val account: String? = null, val tasks: List<PostHogCloudTask> = emptyList())
-
-@Serializable
 data class PostHogCloudRun(
     val taskId: String,
     val runId: String,
+    val title: String? = null,
+    val url: String? = null,
     val status: String,
     val state: String? = null,
     val branch: String? = null,

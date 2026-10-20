@@ -26,10 +26,43 @@ type fakePostHog struct {
 	log        []string
 	streams    int
 	events     chan string
+	commands   []fakeCommand
+	notReady   map[string]int
+	resumed    int
+}
+
+type fakeCommand struct {
+	Method string         `json:"method"`
+	Params map[string]any `json:"params"`
+}
+
+func (f *fakePostHog) sent(method string) []fakeCommand {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var matching []fakeCommand
+	for _, command := range f.commands {
+		if command.Method == method {
+			matching = append(matching, command)
+		}
+	}
+	return matching
+}
+
+func (f *fakePostHog) waitForCommand(t *testing.T, method string, count int) []fakeCommand {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if sent := f.sent(method); len(sent) >= count {
+			return sent
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("PostHog never got %d %s commands: %+v", count, method, f.sent(method))
+	return nil
 }
 
 func newFakePostHog(lines ...string) *fakePostHog {
-	return &fakePostHog{runStatus: "in_progress", log: lines, events: make(chan string, 16)}
+	return &fakePostHog{runStatus: "in_progress", log: lines, events: make(chan string, 16), notReady: map[string]int{}}
 }
 
 func (f *fakePostHog) set(status string, lines ...string) {
@@ -64,7 +97,27 @@ func (f *fakePostHog) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"id":"t2","title":"Draft","updated_at":"2026-10-19T10:00:00Z","latest_run":null}
 		]}`))
 	case run:
-		_, _ = w.Write([]byte(`{"id":"r1","task":"t1","status":"` + f.runStatus + `","branch":"fix-login","runtime_adapter":"claude","output":{"pr_url":"https://github.com/acme/app/pull/9"}}`))
+		_, _ = w.Write([]byte(`{"id":"r1","task":"t1","status":"` + f.runStatus + `","branch":"fix-login","runtime_adapter":"claude","output":{"pr_url":"https://github.com/acme/app/pull/9"},"state":{"claude_subscription_user_id":42}}`))
+	case run + "command/":
+		var command fakeCommand
+		_ = json.NewDecoder(r.Body).Decode(&command)
+		f.commands = append(f.commands, command)
+		if f.notReady[command.Method] > 0 {
+			f.notReady[command.Method]--
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"The sandbox is starting","code":"sandbox_not_ready"}`))
+			return
+		}
+		result := `{"queued":true}`
+		if command.Method == "permission_response" {
+			result = `{"resolved":true}`
+		}
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":` + result + `}`))
+	case run + "resume_in_cloud/":
+		f.resumed++
+		f.runStatus = "in_progress"
+		_, _ = w.Write([]byte(`{"id":"r1","task":"t1","status":"in_progress"}`))
 	case run + "session_logs/":
 		var offset int
 		_ = json.Unmarshal([]byte(r.URL.Query().Get("offset")), &offset)
@@ -118,7 +171,7 @@ func TestPhoneFollowsAPostHogCloudRunLive(t *testing.T) {
 		cloudLine("b-2", "session/update", `{"update":{"sessionUpdate":"agent_message","content":{"type":"text","text":"Looking."}}}`),
 	)
 	api := httptest.NewServer(fake)
-	defer api.Close()
+	t.Cleanup(api.Close)
 	configPath := filepath.Join(t.TempDir(), "posthog-cloud.json")
 	relay := startRelayWith(t, func(options *Options) {
 		options.PostHogCloudConfig = configPath

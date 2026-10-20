@@ -1,6 +1,7 @@
 package posthogcloud
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -56,8 +57,14 @@ type Run struct {
 	Model          string         `json:"model"`
 	ErrorMessage   string         `json:"error_message"`
 	Output         map[string]any `json:"output"`
+	State          map[string]any `json:"state"`
 	CreatedAt      string         `json:"created_at"`
 	CompletedAt    string         `json:"completed_at"`
+}
+
+func (r Run) ClaudeSubscriptionUser() int {
+	value, _ := r.State["claude_subscription_user_id"].(float64)
+	return int(value)
 }
 
 func (r Run) Terminal() bool {
@@ -75,6 +82,107 @@ func Terminal(status string) bool {
 		return true
 	}
 	return false
+}
+
+type CommandError struct {
+	Status     int
+	Code       string
+	Message    string
+	RetryAfter time.Duration
+}
+
+func (e *CommandError) Error() string {
+	return fmt.Sprintf("PostHog refused the command (%d %s): %s", e.Status, e.Code, e.Message)
+}
+
+func (e *CommandError) Retryable() bool {
+	switch e.Status {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusServiceUnavailable, http.StatusBadGateway, http.StatusGatewayTimeout:
+		return e.Code != "usage_limit_reached"
+	}
+	return false
+}
+
+func (e *CommandError) RunEnded() bool {
+	return e.Status == http.StatusConflict
+}
+
+func (c *Client) Command(ctx context.Context, taskID, runID, method string, params any) (json.RawMessage, error) {
+	body := map[string]any{"jsonrpc": "2.0", "method": method, "params": params, "id": strconv.FormatInt(time.Now().UnixNano(), 36)}
+	var reply struct {
+		Result json.RawMessage `json:"result"`
+		Error  *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := c.postJSON(ctx, c.runPath(taskID, runID, "command/"), body, &reply); err != nil {
+		return nil, err
+	}
+	if reply.Error != nil {
+		return nil, &CommandError{Status: http.StatusOK, Code: "agent_error", Message: reply.Error.Message}
+	}
+	return reply.Result, nil
+}
+
+func (c *Client) CancelTurn(ctx context.Context, taskID, runID string) error {
+	_, err := c.Command(ctx, taskID, runID, "cancel", map[string]any{})
+	return err
+}
+
+func (c *Client) ResumeInCloud(ctx context.Context, taskID, runID string) (Run, error) {
+	var run Run
+	err := c.postJSON(ctx, c.runPath(taskID, runID, "resume_in_cloud/"), map[string]any{}, &run)
+	return run, err
+}
+
+func (c *Client) postJSON(ctx context.Context, path string, body, into any) error {
+	encoded, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSuffix(c.config.Host, "/")+path, bytes.NewReader(encoded))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+c.config.APIKey)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	response, err := c.http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
+	if response.StatusCode >= 300 {
+		return commandError(response, raw)
+	}
+	if into == nil || len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	return json.Unmarshal(raw, into)
+}
+
+func commandError(response *http.Response, raw []byte) error {
+	switch response.StatusCode {
+	case http.StatusUnauthorized:
+		return ErrUnauthorized
+	}
+	var body struct {
+		Detail string `json:"detail"`
+		Error  string `json:"error"`
+		Code   string `json:"code"`
+		Type   string `json:"type"`
+	}
+	_ = json.Unmarshal(raw, &body)
+	failure := &CommandError{
+		Status:  response.StatusCode,
+		Code:    firstNonEmpty(body.Code, body.Type),
+		Message: firstNonEmpty(body.Error, body.Detail, strings.TrimSpace(string(raw[:min(len(raw), 300)]))),
+	}
+	if seconds, err := strconv.Atoi(response.Header.Get("Retry-After")); err == nil && seconds > 0 {
+		failure.RetryAfter = time.Duration(seconds) * time.Second
+	}
+	return failure
 }
 
 type User struct {

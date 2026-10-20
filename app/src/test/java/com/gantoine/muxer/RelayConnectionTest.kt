@@ -59,7 +59,8 @@ class RelayConnectionTest {
                 "notifications" -> webSocket.send(
                     """{"type":"result","id":"$id","ok":true,"data":{"notifications":[{"id":"n1","title":"Claude Code","workspace_id":"w1","surface_id":"t1","created_at":"2026-10-16T17:59:08Z","is_read":true,"surface_ref":"surface:1"}]}}""",
                 )
-                "mark_notifications_read" -> webSocket.send("""{"type":"result","id":"$id","ok":true}""")
+                "mark_notifications_read", "posthog_cloud_stop" -> webSocket.send("""{"type":"result","id":"$id","ok":true}""")
+                "posthog_cloud_send" -> webSocket.send("""{"type":"result","id":"$id","ok":false,"error":{"code":"posthog_cloud_run_ended","message":"This run has ended."}}""")
                 "watch_posthog_cloud_run" -> {
                     webSocket.send("""{"type":"result","id":"$id","ok":true}""")
                     webSocket.send("""{"type":"posthog_cloud_chat","run_id":"r9","reset":true,"entries":[{"id":"x","kind":"user","text":"another run"}]}""")
@@ -209,6 +210,13 @@ class RelayConnectionTest {
         val chat = connection.cloudChat.value!!
         assertEquals(listOf("fix login", "Done."), chat.entries.map { it.text })
         assertTrue(chat.loaded)
+
+        assertTrue(connection.postHogCloudStop("t1", "r1").isSuccess)
+        val refused = connection.postHogCloudSend("t1", "r1", "one more thing").exceptionOrNull()
+        assertEquals("This run has ended.", refused?.message)
+        val sentMessage = sent("posthog_cloud_send").single()
+        assertEquals("one more thing", sentMessage["text"]?.jsonPrimitive?.content)
+        assertEquals("r1", sentMessage["run_id"]?.jsonPrimitive?.content)
 
         connection.unwatchPostHogCloudRun("r1")
         assertNull(connection.cloudChat.value)
