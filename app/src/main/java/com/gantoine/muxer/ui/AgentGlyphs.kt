@@ -9,6 +9,7 @@ object AgentGlyphs {
     fun agent(source: String?): Int = when (AgentNames.display(source)) {
         "Claude" -> R.drawable.ic_agent_claude
         "Codex" -> R.drawable.ic_agent_codex
+        "Pi" -> R.drawable.ic_agent_pi
         else -> R.drawable.ic_workspace_agent
     }
 

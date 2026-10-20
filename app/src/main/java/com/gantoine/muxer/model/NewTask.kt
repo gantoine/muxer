@@ -3,7 +3,7 @@ package com.gantoine.muxer.model
 import com.gantoine.muxer.protocol.WorkspaceInfo
 
 object NewTask {
-    val agents = listOf("claude", "codex")
+    val agents = listOf("claude", "codex", "pi")
     const val IN_WORKSPACE = "start_agent_task.workspace_id"
     const val SEARCHABLE_WORKSPACES = 6
 

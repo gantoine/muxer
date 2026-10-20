@@ -189,7 +189,7 @@ fun NewTaskScreen(
                     TaskLabel("Agent", first = !startsInWorkspaces)
                     if (found.isEmpty()) {
                         Text(
-                            "Neither Claude Code nor Codex is installed on $macName.",
+                            "None of Claude Code, Codex or Pi is installed on $macName.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp),
