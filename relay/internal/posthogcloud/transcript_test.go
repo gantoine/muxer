@@ -88,9 +88,10 @@ func TestToolCallsAreUpdatedInPlace(t *testing.T) {
 		update("4", `{"toolCallId":"toolu_2","sessionUpdate":"tool_call_update","status":"failed","rawOutput":"String not found","content":[{"type":"diff","path":"/repo/src/notes.txt","oldText":"world\n","newText":"there\n"}]}`),
 		update("5", `{"sessionUpdate":"tool_call","toolCallId":"exec-1","title":"posthog/exec","kind":"other","status":"in_progress","rawInput":{"command":"search ^skill-get$"},"_meta":{"posthog":{"toolName":"mcp__posthog__exec","mcp":{"server":"posthog","tool":"exec"}}}}`),
 		update("6", `{"sessionUpdate":"tool_call_update","toolCallId":"exec-1","status":"completed","rawOutput":{"content":[{"type":"text","text":"[\"skill-get\"]"}]}}`),
+		update("7", `{"sessionUpdate":"tool_call","toolCallId":"exec-2","title":"/bin/bash -lc 'cat README.md'","kind":"execute","status":"in_progress"}`),
 	)
 	entries := transcript.Entries()
-	if len(entries) != 3 {
+	if len(entries) != 4 {
 		t.Fatalf("each tool call must be one entry: %+v", entries)
 	}
 	bash := entries[0].Tool
@@ -107,6 +108,9 @@ func TestToolCallsAreUpdatedInPlace(t *testing.T) {
 	mcp := entries[2].Tool
 	if mcp.Name != "posthog/exec" || mcp.Summary != "search ^skill-get$" || mcp.Output != `["skill-get"]` {
 		t.Errorf("mcp = %+v", mcp)
+	}
+	if shell := entries[3].Tool; shell.Name != "Bash" || shell.Summary != "cat README.md" {
+		t.Errorf("a shell call without metadata must read as Bash: %+v", shell)
 	}
 }
 

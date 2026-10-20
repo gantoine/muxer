@@ -77,7 +77,7 @@ object PostHogCloud {
     }
 
     fun summary(task: PostHogCloudTask): String = buildList {
-        add(if (task.status == "failed" && !task.error.isNullOrBlank()) task.error else statusLabel(task.status))
+        add(if (task.status == "failed" && !task.error.isNullOrBlank()) task.error else statusLabel(task.status, task.state))
         task.repository?.takeIf { it.isNotBlank() }?.let(::add)
         WorkspaceListing.time(parseInstant(task.updatedAt))?.let(::add)
     }.joinToString(" · ")
@@ -158,7 +158,7 @@ fun CloudTaskAvatar(phase: CloudRunPhase, size: Dp = 52.dp) {
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun CloudTaskRow(task: PostHogCloudTask, shape: Shape, onOpen: () -> Unit, modifier: Modifier = Modifier) {
-    val phase = PostHogCloud.phase(task.status)
+    val phase = PostHogCloud.phase(task.status, task.state)
     Row(
         modifier.groupedRow(shape, onClick = onOpen, contentPadding = PaddingValues(16.dp)),
         verticalAlignment = Alignment.CenterVertically,

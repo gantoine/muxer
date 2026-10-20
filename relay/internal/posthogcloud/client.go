@@ -133,7 +133,7 @@ func (c *Client) Tasks(ctx context.Context, limit int) ([]Task, error) {
 
 func (c *Client) Run(ctx context.Context, taskID, runID string) (Run, error) {
 	var run Run
-	err := c.getJSON(ctx, c.projectPath("tasks/"+url.PathEscape(taskID)+"/runs/"+url.PathEscape(runID)+"/"), nil, &run)
+	err := c.getJSON(ctx, c.runPath(taskID, runID, ""), nil, &run)
 	return run, err
 }
 
@@ -143,7 +143,7 @@ func (c *Client) SessionLogs(ctx context.Context, taskID, runID string, offset i
 		"limit":         {strconv.Itoa(maxLogPage)},
 		"exclude_types": {ignoredLogEntries},
 	}
-	response, err := c.get(ctx, c.projectPath("tasks/"+url.PathEscape(taskID)+"/runs/"+url.PathEscape(runID)+"/session_logs/"), query)
+	response, err := c.get(ctx, c.runPath(taskID, runID, "session_logs/"), query)
 	if err != nil {
 		return nil, false, err
 	}
@@ -153,6 +153,74 @@ func (c *Client) SessionLogs(ctx context.Context, taskID, runID string, offset i
 		return nil, false, fmt.Errorf("read the run log: %w", err)
 	}
 	return entries, response.Header.Get("X-Has-More") == "true", nil
+}
+
+type StreamToken struct {
+	Token   string `json:"token"`
+	BaseURL string `json:"stream_base_url"`
+}
+
+func (t StreamToken) Leg() string {
+	if t.BaseURL != "" && t.Token != "" {
+		return "proxy"
+	}
+	return "django"
+}
+
+func (c *Client) StreamToken(ctx context.Context, taskID, runID string) (StreamToken, error) {
+	var token StreamToken
+	err := c.getJSON(ctx, c.runPath(taskID, runID, "stream_token/"), url.Values{"resync": {"1"}}, &token)
+	return token, err
+}
+
+type Stream struct {
+	body   io.ReadCloser
+	events *EventReader
+}
+
+func (s *Stream) Next() (Event, error) {
+	return s.events.Next()
+}
+
+func (s *Stream) Close() error {
+	return s.body.Close()
+}
+
+func (c *Client) OpenStream(ctx context.Context, taskID, runID string, token StreamToken, lastEventID string) (*Stream, error) {
+	var target string
+	query := url.Values{}
+	if lastEventID == "" {
+		query.Set("start", "latest")
+	}
+	authorization := "Bearer " + c.config.APIKey
+	if token.Leg() == "proxy" {
+		target = strings.TrimSuffix(token.BaseURL, "/") + "/v1/runs/" + url.PathEscape(runID) + "/stream"
+		query.Set("resync", "1")
+		authorization = "Bearer " + token.Token
+	} else {
+		target = strings.TrimSuffix(c.config.Host, "/") + c.runPath(taskID, runID, "stream/")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target+"?"+query.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", authorization)
+	request.Header.Set("Accept", "text/event-stream")
+	if lastEventID != "" {
+		request.Header.Set("Last-Event-ID", lastEventID)
+	}
+	response, err := (&http.Client{Transport: c.http.Transport}).Do(request)
+	if err != nil {
+		return nil, err
+	}
+	if err := responseError(response); err != nil {
+		return nil, err
+	}
+	return &Stream{body: response.Body, events: NewEventReader(response.Body)}, nil
+}
+
+func (c *Client) runPath(taskID, runID, rest string) string {
+	return c.projectPath("tasks/" + url.PathEscape(taskID) + "/runs/" + url.PathEscape(runID) + "/" + rest)
 }
 
 func (c *Client) projectPath(rest string) string {
@@ -183,16 +251,23 @@ func (c *Client) get(ctx context.Context, path string, query url.Values) (*http.
 	if err != nil {
 		return nil, err
 	}
+	if err := responseError(response); err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func responseError(response *http.Response) error {
 	if response.StatusCode < 300 {
-		return response, nil
+		return nil
 	}
 	defer response.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
 	switch response.StatusCode {
 	case http.StatusUnauthorized:
-		return nil, ErrUnauthorized
+		return ErrUnauthorized
 	case http.StatusForbidden:
-		return nil, fmt.Errorf("%w: %s", ErrForbidden, strings.TrimSpace(string(body)))
+		return fmt.Errorf("%w: %s", ErrForbidden, strings.TrimSpace(string(body)))
 	}
-	return nil, &HTTPError{Status: response.StatusCode, Body: strings.TrimSpace(string(body))}
+	return &HTTPError{Status: response.StatusCode, Body: strings.TrimSpace(string(body))}
 }

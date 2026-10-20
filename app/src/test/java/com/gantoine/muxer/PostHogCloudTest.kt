@@ -31,6 +31,7 @@ class PostHogCloudTest {
         assertEquals("Running · acme/app", PostHogCloud.summary(running))
         assertEquals("Sandbox ran out of memory", PostHogCloud.summary(failed))
         assertEquals("Task #12", PostHogCloud.title(failed))
+        assertEquals("Needs your approval · acme/app", PostHogCloud.summary(running.copy(state = "waiting")))
     }
 
     @Test

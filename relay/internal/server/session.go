@@ -128,6 +128,7 @@ func (s *session) run() {
 		s.handle(raw)
 	}
 	s.detach()
+	s.unwatchPostHogCloudRun()
 }
 
 func (s *session) readMessages() <-chan json.RawMessage {

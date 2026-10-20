@@ -389,6 +389,7 @@ data class PostHogCloudTask(
     val repository: String? = null,
     val runId: String? = null,
     val status: String = "not_started",
+    val state: String? = null,
     val error: String? = null,
     val updatedAt: String? = null,
     val url: String = "",

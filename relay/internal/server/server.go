@@ -24,6 +24,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/host"
 	"github.com/gantoine/muxer/relay/internal/notify"
 	"github.com/gantoine/muxer/relay/internal/pi"
+	"github.com/gantoine/muxer/relay/internal/posthogcloud"
 )
 
 const ProtocolVersion = 1
@@ -59,7 +60,7 @@ var DefaultIntervals = Intervals{
 	Git:          10 * time.Second,
 	InputState:   time.Second,
 	Organizing:   5 * time.Second,
-	PostHogCloud: postHogCloudPollInterval,
+	PostHogCloud: postHogCloudBackgroundPoll,
 }
 
 type Cmux interface {
@@ -130,28 +131,29 @@ type Agents interface {
 }
 
 type Options struct {
-	MacName            string
-	FallbackMacName    string
-	RelayVersion       string
-	PollInterval       Intervals
-	ClaudeConfigDir    string
-	ClaudeSession      func(surfaceID string) (claude.SessionRef, bool)
-	CodexHome          string
-	PiAgentDir         string
-	Approvals          Approvals
-	Agents             Agents
-	HostUsage          func(context.Context) (host.Usage, error)
-	InstalledAgents    func(context.Context) ([]string, error)
-	LoginShell         string
-	Tailnet            Tailnet
-	Listeners          func(ctx context.Context, port int) ([]netip.Addr, error)
-	ListeningProcesses func(ctx context.Context) (map[int][]int, error)
-	ParentProcesses    func(ctx context.Context) (map[int]int, error)
-	ExposedPorts       string
-	AutomationsFile    string
-	RelayPort          int
-	PostHogCloudConfig string
-	PostHogCloudHTTP   *http.Client
+	MacName              string
+	FallbackMacName      string
+	RelayVersion         string
+	PollInterval         Intervals
+	ClaudeConfigDir      string
+	ClaudeSession        func(surfaceID string) (claude.SessionRef, bool)
+	CodexHome            string
+	PiAgentDir           string
+	Approvals            Approvals
+	Agents               Agents
+	HostUsage            func(context.Context) (host.Usage, error)
+	InstalledAgents      func(context.Context) ([]string, error)
+	LoginShell           string
+	Tailnet              Tailnet
+	Listeners            func(ctx context.Context, port int) ([]netip.Addr, error)
+	ListeningProcesses   func(ctx context.Context) (map[int][]int, error)
+	ParentProcesses      func(ctx context.Context) (map[int]int, error)
+	ExposedPorts         string
+	AutomationsFile      string
+	RelayPort            int
+	PostHogCloudConfig   string
+	PostHogCloudHTTP     *http.Client
+	PostHogCloudFollower posthogcloud.FollowerOptions
 }
 
 type Server struct {
@@ -176,6 +178,7 @@ type Server struct {
 	organizing *workspaceExtras
 	files      *files.Index
 	exposures  *portExposures
+	cloud      *cloudHub
 }
 
 func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, logger *slog.Logger) *Server {
@@ -205,6 +208,8 @@ func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, l
 	server.exposures = &portExposures{path: options.ExposedPorts}
 	server.workspaces = newFeed(options.PollInterval.Workspaces, server.pollWorkspaces(&gitInfo{}))
 	server.keepAwake = newFeed(options.PollInterval.KeepAwake, server.pollKeepAwake)
+	server.cloud = newCloudHub(server)
+	go server.cloud.run(ctx)
 	return server
 }
 

@@ -3,6 +3,7 @@ package posthogcloud
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/gantoine/muxer/relay/internal/chat"
@@ -18,6 +19,7 @@ const (
 type logEntry struct {
 	Timestamp    string `json:"timestamp"`
 	EventID      string `json:"event_id"`
+	FirstEventID string `json:"first_event_id"`
 	Notification struct {
 		Method string          `json:"method"`
 		Params json.RawMessage `json:"params"`
@@ -58,6 +60,7 @@ type sessionUpdate struct {
 	Content       json.RawMessage `json:"content"`
 	ToolCallID    string          `json:"toolCallId"`
 	Title         string          `json:"title"`
+	Kind          string          `json:"kind"`
 	Status        string          `json:"status"`
 	RawInput      json.RawMessage `json:"rawInput"`
 	RawOutput     json.RawMessage `json:"rawOutput"`
@@ -127,7 +130,7 @@ func (t *Transcript) Feed(raw []byte) []chat.Entry {
 	if err := json.Unmarshal(raw, &entry); err != nil || entry.Notification.Method == "" {
 		return nil
 	}
-	id := entry.EventID
+	id := firstNonEmpty(entry.FirstEventID, entry.EventID)
 	if id == "" {
 		id = fmt.Sprintf("e%d", t.fed)
 	}
@@ -193,6 +196,15 @@ func (t *Transcript) Feed(raw []byte) []chat.Entry {
 		return t.add(chat.Entry{ID: id, Kind: chat.KindNotice, Text: "Cleared the conversation", Time: entry.Timestamp})
 	}
 	return nil
+}
+
+func (t *Transcript) FeedPermissionRequest(raw []byte, timestamp string) []chat.Entry {
+	var request permissionParams
+	if json.Unmarshal(raw, &request) != nil {
+		return nil
+	}
+	t.open = nil
+	return t.requestPermission(timestamp, request)
 }
 
 func (t *Transcript) prompt(id, timestamp string, params json.RawMessage) []chat.Entry {
@@ -387,7 +399,30 @@ func toolName(update sessionUpdate) string {
 	if mcp := update.Meta.PostHog.MCP; mcp.Tool != "" {
 		return mcp.Server + "/" + mcp.Tool
 	}
+	if name, ok := toolKinds[update.Kind]; ok {
+		return name
+	}
 	return firstLine(update.Title)
+}
+
+var toolKinds = map[string]string{
+	"execute": "Bash",
+	"read":    "Read",
+	"edit":    "Edit",
+	"delete":  "Delete",
+	"move":    "Move",
+	"search":  "Search",
+	"fetch":   "Fetch",
+	"think":   "Think",
+}
+
+var shellWrapper = regexp.MustCompile(`^(?:/bin/)?(?:ba|z)?sh -l?c '(.*)'$`)
+
+func shellCommand(title string) string {
+	if match := shellWrapper.FindStringSubmatch(strings.TrimSpace(title)); match != nil {
+		return match[1]
+	}
+	return title
 }
 
 func toolSummary(name string, update sessionUpdate) string {
@@ -400,7 +435,11 @@ func toolSummary(name string, update sessionUpdate) string {
 			return firstLine(value)
 		}
 	}
-	if title := firstLine(update.Title); title != name {
+	title := update.Title
+	if update.Kind == "execute" {
+		title = shellCommand(title)
+	}
+	if title := firstLine(title); title != name {
 		return title
 	}
 	return ""

@@ -155,7 +155,7 @@ On the phone, open a computer's settings and tap **Automations** to see its rule
 
 ## PostHog Cloud runs
 
-If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the Devices list can show your recent tasks under **PostHog Cloud**. Tap one to follow its latest run as a chat: its messages, tool calls, approval requests and status, with buttons for its pull request and for the task in PostHog. For now you can only read runs from the phone. Replying and approving still happen in PostHog.
+If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the Devices list can show your recent tasks under **PostHog Cloud**. Tap one to follow its latest run live as a chat: its messages, tool calls, approval requests and status, with buttons for its pull request and for the task in PostHog. The relay keeps following your runs that are in progress, so the list shows which ones are working, waiting for a reply or need your approval. For now you can only read runs from the phone. Replying and approving still happen in PostHog.
 
 Create a personal API key in PostHog under **Settings › Personal API keys** with the `task:read`, `task:write` and `user:read` scopes, then connect the relay to it:
 
