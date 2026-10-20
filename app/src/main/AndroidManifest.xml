@@ -48,6 +48,11 @@
                 android:resource="@xml/shortcuts" />
         </activity>
 
+        <activity-alias
+            android:name=".OpenTerminalActivity"
+            android:exported="false"
+            android:targetActivity=".MainActivity" />
+
         <receiver
             android:name=".notifications.ApprovalActionReceiver"
             android:exported="false" />

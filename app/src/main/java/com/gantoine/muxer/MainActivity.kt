@@ -48,7 +48,7 @@ class MainActivity : FragmentActivity() {
         if (intent.action == Intent.ACTION_VIEW) PairLink.parse(intent.data)?.let { return it }
         if (intent.action == ACTION_PAIR) return LaunchTarget.PairComputer
         if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) return shareTarget(intent)
-        if (intent.action == Notifier.ACTION_OPEN_TERMINAL) {
+        if (intent.action == Notifier.ACTION_OPEN_TERMINAL && intent.component?.className == Notifier.OPEN_TERMINAL_ALIAS) {
             val target = intent.conversationTarget() ?: return null
             return LaunchTarget.Terminal(target.macId, target.workspaceId, target.surfaceId)
         }

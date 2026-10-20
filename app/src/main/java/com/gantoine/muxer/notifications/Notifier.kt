@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,7 +16,6 @@ import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import com.gantoine.muxer.BubbleActivity
-import com.gantoine.muxer.MainActivity
 import com.gantoine.muxer.R
 import com.gantoine.muxer.data.Mac
 import com.gantoine.muxer.model.AgentNames
@@ -311,8 +311,13 @@ class Notifier(
         const val EXTRA_WORKSPACE_ID = "workspace_id"
         const val EXTRA_SURFACE_ID = "surface_id"
 
+        const val OPEN_TERMINAL_ALIAS = "com.gantoine.muxer.OpenTerminalActivity"
+
+        fun openTerminalComponent(context: Context): ComponentName = ComponentName(context.packageName, OPEN_TERMINAL_ALIAS)
+
         fun openTerminal(context: Context, macId: String, workspaceId: String?, surfaceId: String?): Intent =
-            Intent(context, MainActivity::class.java).apply {
+            Intent().apply {
+                component = openTerminalComponent(context)
                 action = ACTION_OPEN_TERMINAL
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra(EXTRA_MAC_ID, macId)

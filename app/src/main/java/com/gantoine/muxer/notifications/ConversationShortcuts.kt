@@ -14,7 +14,6 @@ import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.IconCompat
-import com.gantoine.muxer.MainActivity
 import com.gantoine.muxer.R
 import com.gantoine.muxer.data.MacSnapshot
 import com.gantoine.muxer.model.isAgent
@@ -102,7 +101,8 @@ class ConversationShortcuts(private val context: Context) {
             .build()
 
     private fun openIntent(shortcut: WorkspaceShortcut): Intent =
-        Intent(context, MainActivity::class.java)
+        Intent()
+            .setComponent(Notifier.openTerminalComponent(context))
             .setAction(Notifier.ACTION_OPEN_TERMINAL)
             .putTarget(ConversationTarget(shortcut.macId, shortcut.workspaceId, shortcut.surfaceId))
 

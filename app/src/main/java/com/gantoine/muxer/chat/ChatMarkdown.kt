@@ -128,7 +128,7 @@ object ChatMarkdown {
                 groups[2].isNotEmpty() -> inline(groups[2]).map { it.copy(bold = true) }
                 groups[3].isNotEmpty() -> inline(groups[3]).map { it.copy(bold = true) }
                 groups[4].isNotEmpty() -> inline(groups[4]).map { it.copy(strike = true) }
-                groups[5].isNotEmpty() -> inline(groups[5]).map { it.copy(url = linkTarget(groups[6])) }
+                groups[5].isNotEmpty() -> linkSpans(groups[5], linkTarget(groups[6]))
                 groups[7].isNotEmpty() -> inline(groups[7]).map { it.copy(italic = true) }
                 groups[8].isNotEmpty() -> inline(groups[8]).map { it.copy(italic = true) }
                 else -> listOf(InlineSpan(groups[9], url = groups[9]))
@@ -141,6 +141,24 @@ object ChatMarkdown {
 
     private fun linkTarget(url: String): String? =
         url.takeIf { it.startsWith("https://") || it.startsWith("http://") || it.startsWith("mailto:") }
+
+    private fun linkSpans(label: String, target: String?): List<InlineSpan> {
+        if (target != null && disguises(label, target)) return listOf(InlineSpan(target, url = target))
+        return inline(label).map { it.copy(url = target) }
+    }
+
+    private fun disguises(label: String, target: String): Boolean {
+        val shown = label.trim()
+        val address = when {
+            shown.startsWith("https://") || shown.startsWith("http://") -> shown
+            shown.startsWith("www.") -> "https://$shown"
+            else -> return false
+        }
+        return hostOf(address) != hostOf(target)
+    }
+
+    private fun hostOf(url: String): String? =
+        runCatching { java.net.URI(url).host }.getOrNull()?.lowercase()?.removePrefix("www.")
 
     private fun bulletFor(marker: String, depth: Int): String = when {
         marker.first().isDigit() -> marker.dropLast(1) + "."
