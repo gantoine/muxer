@@ -11,6 +11,7 @@ import com.gantoine.muxer.protocol.RelayNotification
 import com.gantoine.muxer.protocol.Retry
 import com.gantoine.muxer.protocol.Welcome
 import com.gantoine.muxer.protocol.WorkspaceInfo
+import com.gantoine.muxer.ui.PostHogCloud
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -313,7 +314,8 @@ class ConnectionManager(
                 val answerableHere = connection?.approvals?.value.orEmpty().any { it.surfaceId == notification.surfaceId }
                 val retrying = connection?.retries?.value.orEmpty().any { it.surfaceId == notification.surfaceId }
                 val wanted = NotificationFilter.shouldShow(mac, notification)
-                if (wanted && !isLookingAt(macId, notification.surfaceId) && !answerableHere && !retrying) {
+                val shownOn = notification.surfaceId?.takeIf { it.isNotBlank() } ?: notification.posthogRunId?.let(PostHogCloud::visibleKey)
+                if (wanted && !isLookingAt(macId, shownOn) && !answerableHere && !retrying) {
                     notify(mac, notification)
                     recordShown(macId, notification)
                 }

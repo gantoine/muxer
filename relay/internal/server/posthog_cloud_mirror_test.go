@@ -224,6 +224,18 @@ func TestCloudRunsBecomeCmuxWorkspaces(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(listing["workspaces"]), "agent_state:Running") {
 		t.Fatalf("a mirrored terminal must read as a running agent: %v", listing["workspaces"])
 	}
+	if !strings.Contains(fmt.Sprint(listing["workspaces"]), "preview:PostHog Cloud · acme/app") {
+		t.Fatalf("a mirrored workspace without messages yet must say where it comes from: %v", listing["workspaces"])
+	}
+
+	fake.mu.Lock()
+	fake.lanes = map[string]cmux.LaneStatus{deps: {Effective: "todo", Inferred: "todo"}}
+	before := strings.Count(strings.Join(fake.performed, "\n"), `"status":"done","workspace_id":"`+deps+`"`)
+	fake.mu.Unlock()
+	waitUntil(t, "the lane cmux cleared to be set again", func() bool {
+		_, _, performed, _ := snapshot()
+		return strings.Count(strings.Join(performed, "\n"), `"status":"done","workspace_id":"`+deps+`"`) > before
+	})
 
 	workspaceOf := func(surfaceID string) string {
 		for _, mirrored := range relay.server.mirror.snapshot() {

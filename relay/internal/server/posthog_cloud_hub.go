@@ -122,6 +122,18 @@ func (h *cloudHub) agent(runID string) string {
 	return run.RuntimeAdapter
 }
 
+func (h *cloudHub) preview(runID string) string {
+	feed, ok := h.feed(runID)
+	if !ok {
+		return ""
+	}
+	follower := feed.current()
+	if pending := follower.Pending(); len(pending) > 0 {
+		return "Waiting for approval: " + cmp.Or(pending[0].Title, pending[0].Tool, "a tool call")
+	}
+	return firstPromptLine(follower.Last(chat.KindAssistant))
+}
+
 func (h *cloudHub) subscribe(client *posthogcloud.Client, taskID, runID string) *cloudSubscription {
 	feed := h.acquire(client, taskID, runID)
 	sub := &cloudSubscription{feed: feed, updates: make(chan posthogcloud.Update, postHogCloudSubscriberBuffer), wake: make(chan struct{}, 1)}

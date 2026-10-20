@@ -35,11 +35,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.gantoine.muxer.MuxerApplication
 import com.gantoine.muxer.images.RemoteImages
 import com.gantoine.muxer.model.AgentNames
 import com.gantoine.muxer.model.ApprovalReply
 import com.gantoine.muxer.net.ConnectionState
+import com.gantoine.muxer.net.VisibleTerminal
 import com.gantoine.muxer.protocol.Approval
 import com.gantoine.muxer.protocol.PostHogCloudRun
 import kotlinx.coroutines.launch
@@ -48,6 +51,8 @@ enum class CloudRunPhase { Running, Waiting, Queued, Done, Failed, Stopped }
 
 object PostHogCloud {
     const val ACTIONS_FEATURE = "posthog_cloud_actions"
+
+    fun visibleKey(runId: String): String = "posthog-cloud:$runId"
 
     fun phase(status: String, state: String? = null): CloudRunPhase = when (status) {
         "in_progress" -> if (state == "waiting") CloudRunPhase.Waiting else CloudRunPhase.Running
@@ -98,9 +103,18 @@ fun PostHogCloudRunScreen(
     val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val visible = remember(macId, runId) { VisibleTerminal(macId, PostHogCloud.visibleKey(runId)) }
     DisposableEffect(connection, runId) {
         connection?.watchPostHogCloudRun(taskId, runId)
-        onDispose { connection?.unwatchPostHogCloudRun(runId) }
+        app.connections.visibleTerminal.value = visible
+        onDispose {
+            connection?.unwatchPostHogCloudRun(runId)
+            if (app.connections.visibleTerminal.value === visible) app.connections.visibleTerminal.value = null
+        }
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { app.connections.visibleTerminal.value = visible }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if (app.connections.visibleTerminal.value === visible) app.connections.visibleTerminal.value = null
     }
     val chat by connection.collectOr(null) { it.cloudChat }
     val run by connection.collectOr(null) { it.cloudRun }

@@ -208,7 +208,14 @@ func (m *cloudMirror) sync(ctx context.Context, tasks []posthogcloud.Task) {
 	if len(closing) > 0 || len(creating) > 0 {
 		m.server.workspaces.refresh()
 	}
-	m.syncLanes(ctx)
+	m.syncLanes(ctx, true)
+}
+
+func (r mirroredRun) description() string {
+	if r.Repository == "" {
+		return postHogCloudDescriptionStart
+	}
+	return postHogCloudDescriptionStart + " · " + r.Repository
 }
 
 func groupName(repository string) string {
@@ -277,6 +284,7 @@ func (m *cloudMirror) create(ctx context.Context, task posthogcloud.Task) {
 		return
 	}
 	mirrored := &mirroredRun{TaskID: task.ID, WorkspaceID: created.WorkspaceID, SurfaceID: created.SurfaceID, Title: title, Repository: task.Repository, Status: task.LatestRun.Status}
+	description := mirrored.description()
 	m.mu.Lock()
 	m.runs[runID] = mirrored
 	m.saveLocked()
@@ -284,10 +292,6 @@ func (m *cloudMirror) create(ctx context.Context, task posthogcloud.Task) {
 
 	if groupID := m.group(ctx, groupName(task.Repository), home); groupID != "" {
 		_ = m.server.organize(ctx, cmux.MethodGroupAdd, map[string]any{"group_id": groupID, "workspace_id": created.WorkspaceID}, nil)
-	}
-	description := postHogCloudDescriptionStart
-	if task.Repository != "" {
-		description += " · " + task.Repository
 	}
 	_ = m.server.organize(ctx, cmux.MethodWorkspaceAction, map[string]any{"workspace_id": created.WorkspaceID, "action": "set_description", "description": description}, nil)
 	command := "clear; " + shellQuote(cmp.Or(m.server.options.PostHogCloudExecutable, "muxer")) + " posthog-cloud attach --task " + shellQuote(task.ID) + " --run " + shellQuote(runID)
@@ -365,7 +369,7 @@ func (m *cloudMirror) current(runID string, mirrored mirroredRun) (status, state
 	return cmp.Or(status, mirrored.Status), state
 }
 
-func (m *cloudMirror) syncLanes(ctx context.Context) {
+func (m *cloudMirror) syncLanes(ctx context.Context, verify bool) {
 	lanes := map[string]string{}
 	for runID, mirrored := range m.snapshot() {
 		if status, state := m.current(runID, mirrored); status != "" {
@@ -376,7 +380,19 @@ func (m *cloudMirror) syncLanes(ctx context.Context) {
 	var changes []laneChange
 	m.mu.Lock()
 	for runID, lane := range lanes {
-		if mirrored, ok := m.runs[runID]; ok && mirrored.Lane != lane {
+		mirrored, ok := m.runs[runID]
+		if !ok {
+			continue
+		}
+		if verify {
+			m.mu.Unlock()
+			actual, err := m.server.cmux.LaneStatus(ctx, mirrored.WorkspaceID)
+			m.mu.Lock()
+			if err == nil && actual.Effective != lane {
+				mirrored.Lane = ""
+			}
+		}
+		if mirrored.Lane != lane {
 			mirrored.Lane = lane
 			changes = append(changes, laneChange{mirrored.WorkspaceID, lane})
 		}
@@ -403,6 +419,13 @@ func (m *cloudMirror) decorate(list *cmux.WorkspaceList) {
 		bySurface[mirrored.SurfaceID] = runID
 	}
 	for w := range list.Workspaces {
+		workspace := &list.Workspaces[w]
+		for _, terminal := range workspace.Terminals {
+			if runID, ok := bySurface[terminal.ID]; ok {
+				preview := cmp.Or(m.server.cloud.preview(runID), runs[runID].description())
+				workspace.Preview = &preview
+			}
+		}
 		for t := range list.Workspaces[w].Terminals {
 			terminal := &list.Workspaces[w].Terminals[t]
 			runID, ok := bySurface[terminal.ID]
@@ -420,6 +443,7 @@ func (m *cloudMirror) decorate(list *cmux.WorkspaceList) {
 
 func (m *cloudMirror) touched(ctx context.Context, runID string) {
 	if _, ok := m.run(runID); ok {
-		m.syncLanes(ctx)
+		m.syncLanes(ctx, false)
+		m.server.workspaces.refresh()
 	}
 }
