@@ -231,7 +231,7 @@ func (t *Transcript) addText(entry line, position int, text string) []chat.Entry
 	text, kind = cleanText(text, kind)
 	var images []string
 	if kind == chat.KindUser {
-		images, text = splitAttachedImages(text)
+		images, text = chat.SplitAttachedImages(text)
 	}
 	if text == "" && len(images) == 0 {
 		return nil
@@ -256,18 +256,6 @@ var (
 	systemReminder = regexp.MustCompile(`(?s)<system-reminder>.*?</system-reminder>`)
 	imageMarker    = regexp.MustCompile(`\[Image(?: #\d+|: source: [^\]]*)\]`)
 )
-
-func splitAttachedImages(text string) ([]string, string) {
-	var images []string
-	for {
-		match := chat.AttachedImage.FindStringSubmatch(text)
-		if match == nil {
-			return images, text
-		}
-		images = append(images, match[1])
-		text = text[len(match[0]):]
-	}
-}
 
 func cleanText(text, kind string) (string, string) {
 	text = strings.TrimSpace(systemReminder.ReplaceAllString(text, ""))

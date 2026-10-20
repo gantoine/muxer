@@ -19,9 +19,9 @@ const (
 	taskInWorkspaceFeature = "start_agent_task.workspace_id"
 )
 
-var TaskAgents = []string{agentKindClaude, agentKindCodex}
+var TaskAgents = []string{agentKindClaude, agentKindCodex, agentKindPi}
 
-var taskAgentNames = map[string]string{agentKindClaude: "Claude Code", agentKindCodex: "Codex"}
+var taskAgentNames = map[string]string{agentKindClaude: "Claude Code", agentKindCodex: "Codex", agentKindPi: "Pi"}
 
 var (
 	errAgentTasksUnsupported       = unsupported("start agent tasks")
@@ -44,7 +44,7 @@ func parseAgentTask(raw json.RawMessage) (agentTaskRequest, error) {
 		return request, invalid("start_agent_task needs agent, cwd and prompt.")
 	}
 	if !slices.Contains(TaskAgents, request.Agent) {
-		return request, invalid("The agent must be claude or codex.")
+		return request, invalid("The agent must be claude, codex or pi.")
 	}
 	request.Prompt = strings.TrimSpace(request.Prompt)
 	if request.Prompt == "" {
@@ -165,6 +165,9 @@ func taskCommand(agent, shell string) string {
 	forget := "unset " + taskPromptVariable
 	if filepath.Base(shell) == "fish" {
 		forget = "set -e " + taskPromptVariable
+	}
+	if agent == agentKindPi {
+		return agent + ` " $` + taskPromptVariable + `"; ` + forget
 	}
 	return agent + ` -- "$` + taskPromptVariable + `"; ` + forget
 }

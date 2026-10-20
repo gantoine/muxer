@@ -527,6 +527,7 @@ type testRelay struct {
 	server    *Server
 	claudeDir string
 	codexDir  string
+	piDir     string
 	tailnet   *fakeTailnet
 }
 
@@ -548,12 +549,13 @@ func startRelayWith(t *testing.T, configure func(*Options)) testRelay {
 	intervals.Chat = 10 * time.Millisecond
 	claudeDir := t.TempDir()
 	codexDir := t.TempDir()
+	piDir := t.TempDir()
 	tailnet := newFakeTailnet()
 	options := Options{
 		Tailnet: tailnet, Listeners: tailnet.listenersOn, ExposedPorts: filepath.Join(t.TempDir(), "exposed-ports.json"), RelayPort: 8765,
 		AutomationsFile: filepath.Join(t.TempDir(), "automations.json"),
 		MacName:         "Test Mac", RelayVersion: "test", PollInterval: intervals, ClaudeConfigDir: claudeDir,
-		ClaudeSession: fake.runningClaude, CodexHome: codexDir,
+		ClaudeSession: fake.runningClaude, CodexHome: codexDir, PiAgentDir: piDir,
 		HostUsage: func(context.Context) (host.Usage, error) {
 			return host.Usage{CPUPercent: 23.5, MemoryUsedBytes: 30 << 30, MemoryTotalBytes: 48 << 30}, nil
 		},
@@ -564,7 +566,7 @@ func startRelayWith(t *testing.T, configure func(*Options)) testRelay {
 	relay := New(fake, store, nil, options, logger)
 	server := httptest.NewServer(relay.Handler())
 	t.Cleanup(server.Close)
-	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir, tailnet: tailnet}
+	return testRelay{url: server.URL, cmux: fake, store: store, server: relay, claudeDir: claudeDir, codexDir: codexDir, piDir: piDir, tailnet: tailnet}
 }
 
 func (r testRelay) pair(t *testing.T) string {
@@ -932,6 +934,45 @@ func TestChatFollowsACodexSession(t *testing.T) {
 	entries = update["entries"].([]any)
 	tool, _ := entries[0].(map[string]any)["tool"].(map[string]any)
 	if update["reset"] != false || len(entries) != 1 || tool["name"] != "Shell" || tool["summary"] != "ls" {
+		t.Fatalf("appended chat = %v", update)
+	}
+}
+
+func TestChatFollowsAPiSession(t *testing.T) {
+	relay := startRelay(t)
+	ctx, conn := relay.connect(t)
+
+	session := filepath.Join(relay.piDir, "sessions", "--Users-me-app--", "2026-10-20T11-36-53-410Z_pi-session-1.jsonl")
+	if err := os.MkdirAll(filepath.Dir(session), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first := `{"type":"session","version":3,"id":"pi-session-1","timestamp":"T0","cwd":"/Users/me/app"}` + "\n" +
+		`{"type":"message","id":"u1","parentId":null,"timestamp":"T1","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}`
+	if err := os.WriteFile(session, []byte(first+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	relay.cmux.setAgent(cmux.AgentSession{Kind: "pi", SessionID: "pi-session-1", Cwd: "/Users/me/app"})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "attach", "workspace_id": "w1", "surface_id": "t1"})
+	if started := readUntil(t, ctx, conn, "chat_session"); started["session_id"] != "pi-session-1" {
+		t.Fatalf("entering Pi = %v", started)
+	}
+	chat := readUntil(t, ctx, conn, "chat")
+	entries := chat["entries"].([]any)
+	if chat["reset"] != true || len(entries) != 1 || entries[0].(map[string]any)["text"] != "hello" {
+		t.Fatalf("first chat = %v", chat)
+	}
+
+	file, err := os.OpenFile(session, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file.WriteString(`{"type":"message","id":"a1","parentId":"u1","timestamp":"T2","message":{"role":"assistant","content":[{"type":"toolCall","id":"call-1","name":"bash","arguments":{"command":"ls"}}],"stopReason":"toolUse"}}` + "\n")
+	file.Close()
+	update := readUntil(t, ctx, conn, "chat")
+	entries = update["entries"].([]any)
+	tool, _ := entries[0].(map[string]any)["tool"].(map[string]any)
+	if update["reset"] != false || len(entries) != 1 || tool["name"] != "Bash" || tool["summary"] != "ls" {
 		t.Fatalf("appended chat = %v", update)
 	}
 }
