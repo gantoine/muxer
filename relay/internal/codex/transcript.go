@@ -164,7 +164,7 @@ func (t *Transcript) typedItem(it item, timestamp string) []chat.Entry {
 				Name:    fileToolName(change.Type),
 				Summary: chat.ShortPath(path),
 				Status:  toolStatus(it.Status),
-				Diff:    unifiedDiffHunks(change.UnifiedDiff),
+				Diff:    chat.UnifiedDiffHunks(change.UnifiedDiff),
 			}})...)
 		}
 		return changed
@@ -241,7 +241,6 @@ var (
 	imagePlaceholder = regexp.MustCompile(`\[Image #\d+\]`)
 	exitCodeLine     = regexp.MustCompile(`(?m)^Process exited with code (\d+)$`)
 	patchFileLine    = regexp.MustCompile(`(?m)^\*\*\* (Update|Add|Delete) File: (.+)$`)
-	hunkHeader       = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 )
 
 func (t *Transcript) user(id, text string, images []string, timestamp string) []chat.Entry {
@@ -380,22 +379,4 @@ func callOutput(raw json.RawMessage) (string, bool) {
 		text = output
 	}
 	return strings.TrimSpace(text), failed
-}
-
-func unifiedDiffHunks(diff string) []chat.Hunk {
-	var hunks []chat.Hunk
-	for _, text := range strings.Split(diff, "\n") {
-		if match := hunkHeader.FindStringSubmatch(text); match != nil {
-			oldStart, _ := strconv.Atoi(match[1])
-			newStart, _ := strconv.Atoi(match[2])
-			hunks = append(hunks, chat.Hunk{OldStart: oldStart, NewStart: newStart})
-			continue
-		}
-		if len(hunks) == 0 || text == "" || !strings.ContainsRune("+- ", rune(text[0])) {
-			continue
-		}
-		last := &hunks[len(hunks)-1]
-		last.Lines = append(last.Lines, text)
-	}
-	return chat.CapHunks(hunks)
 }

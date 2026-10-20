@@ -78,7 +78,7 @@ func TestAgentTasksRefuseBadRequestsBeforeTouchingCmux(t *testing.T) {
 		request map[string]any
 		code    string
 	}{
-		{map[string]any{"agent": "pi", "cwd": folder, "prompt": "hi"}, "invalid_params"},
+		{map[string]any{"agent": "amp", "cwd": folder, "prompt": "hi"}, "invalid_params"},
 		{map[string]any{"agent": "codex", "cwd": folder, "prompt": "  \n "}, "invalid_params"},
 		{map[string]any{"agent": "codex", "cwd": folder, "prompt": strings.Repeat("a", maxTaskPromptBytes+1)}, "invalid_params"},
 		{map[string]any{"agent": "codex", "cwd": "code/app", "prompt": "hi"}, "invalid_params"},
@@ -116,7 +116,7 @@ func TestInstalledAgentsFallBackToEveryAgentWhenTheShellFails(t *testing.T) {
 		t.Fatalf("agents = %v", got)
 	}
 	failure = errors.New("shell timed out")
-	if got := agents("2"); !slices.Equal(got, []any{"claude", "codex"}) {
+	if got := agents("2"); !slices.Equal(got, []any{"claude", "codex", "pi"}) {
 		t.Fatalf("an unknown answer must offer every agent: %v", got)
 	}
 }
@@ -233,5 +233,11 @@ func TestTheTaskPromptIsForgottenInTheShellsOwnSyntax(t *testing.T) {
 	}
 	if got := taskCommand("codex", "/opt/homebrew/bin/fish"); got != `codex -- "$MUXER_TASK_PROMPT"; set -e MUXER_TASK_PROMPT` {
 		t.Fatalf("fish command = %s", got)
+	}
+}
+
+func TestPiGetsThePromptWithALeadingSpaceSoADashIsNotReadAsAnOption(t *testing.T) {
+	if got := taskCommand("pi", "/bin/zsh"); got != `pi " $MUXER_TASK_PROMPT"; unset MUXER_TASK_PROMPT` {
+		t.Fatalf("pi command = %s", got)
 	}
 }

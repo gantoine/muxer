@@ -3,6 +3,7 @@ package chat
 import (
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -78,6 +79,26 @@ func CapHunks(hunks []Hunk) []Hunk {
 	return capped
 }
 
+var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
+
+func UnifiedDiffHunks(diff string) []Hunk {
+	var hunks []Hunk
+	for _, text := range strings.Split(diff, "\n") {
+		if match := hunkHeader.FindStringSubmatch(text); match != nil {
+			oldStart, _ := strconv.Atoi(match[1])
+			newStart, _ := strconv.Atoi(match[2])
+			hunks = append(hunks, Hunk{OldStart: oldStart, NewStart: newStart})
+			continue
+		}
+		if len(hunks) == 0 || text == "" || !strings.ContainsRune("+- ", rune(text[0])) {
+			continue
+		}
+		last := &hunks[len(hunks)-1]
+		last.Lines = append(last.Lines, text)
+	}
+	return CapHunks(hunks)
+}
+
 func Truncate(text string, limit int) string {
 	if len(text) <= limit {
 		return text
@@ -97,6 +118,18 @@ var AttachedImage = regexp.MustCompile(`^(/\S*/clipboard-\d{4}-\d{2}-\d{2}-\d{6}
 func IsAttachedImage(path string) bool {
 	match := AttachedImage.FindStringSubmatch(path)
 	return match != nil && match[1] == path
+}
+
+func SplitAttachedImages(text string) ([]string, string) {
+	var images []string
+	for {
+		match := AttachedImage.FindStringSubmatch(text)
+		if match == nil {
+			return images, text
+		}
+		images = append(images, match[1])
+		text = text[len(match[0]):]
+	}
 }
 
 func ShortPath(value string) string {

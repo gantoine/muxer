@@ -186,3 +186,37 @@ func TestPhoneCanFetchImagesClaudeLookedAt(t *testing.T) {
 		t.Fatalf("a block that isn't an image = %v", result)
 	}
 }
+
+func TestPhoneCanFetchImagesPastedIntoPi(t *testing.T) {
+	relay := startRelay(t)
+	ctx, conn := relay.connect(t)
+	session := filepath.Join(relay.piDir, "sessions", "--Users-me-app--", "2026-10-20T11-36-53-410Z_pi-1.jsonl")
+	if err := os.MkdirAll(filepath.Dir(session), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	photo := base64.StdEncoding.EncodeToString([]byte("jpeg bytes"))
+	lines := `{"type":"message","id":"u1","parentId":null,"timestamp":"T1","message":{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image","data":"` + photo + `","mimeType":"image/jpeg"}]}}` + "\n"
+	if err := os.WriteFile(session, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "hello", "id": "1"})
+	resultFor(t, ctx, conn, "1")
+	relay.cmux.setAgent(cmux.AgentSession{Kind: "pi", SessionID: "pi-1", Cwd: "/Users/me/app"})
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "attach", "workspace_id": "w1", "surface_id": "t1"})
+
+	chat := readUntil(t, ctx, conn, "chat")
+	user := chat["entries"].([]any)[0].(map[string]any)
+	if images, _ := user["images"].([]any); len(images) != 1 || images[0] != "u1:1" {
+		t.Fatalf("user entry = %v", user)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "2", "image": "u1:1"})
+	result := resultFor(t, ctx, conn, "2")
+	data, _ := result["data"].(map[string]any)
+	if result["ok"] != true || data["format"] != "jpeg" || data["data_b64"] != photo {
+		t.Fatalf("chat_image = %v", result)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "chat_image", "id": "3", "image": "u1:0"})
+	if result := resultFor(t, ctx, conn, "3"); errorCode(result) != "not_found" {
+		t.Fatalf("a block that isn't an image = %v", result)
+	}
+}

@@ -3,20 +3,25 @@ package server
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/gantoine/muxer/relay/internal/chat"
 	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/codex"
+	"github.com/gantoine/muxer/relay/internal/pi"
 )
 
 const (
 	agentKindClaude         = "claude"
 	agentKindCodex          = "codex"
+	agentKindPi             = "pi"
 	maxInitialEntries       = 300
 	initialTranscriptWindow = 4 << 20
 )
+
+var chatAgents = []string{agentKindClaude, agentKindCodex, agentKindPi}
 
 type transcript interface {
 	Feed(raw []byte) []chat.Entry
@@ -84,22 +89,28 @@ func (s *Server) agentRunning(ctx context.Context, workspaceID, surfaceID string
 
 func (s *Server) chatAgent(ctx context.Context, workspaceID, surfaceID string) (cmux.AgentSession, error) {
 	agent, err := s.agentSession(ctx, workspaceID, surfaceID)
-	if err != nil || (agent.Kind != agentKindClaude && agent.Kind != agentKindCodex) {
+	if err != nil || !slices.Contains(chatAgents, agent.Kind) {
 		return cmux.AgentSession{}, err
 	}
 	return agent, nil
 }
 
 func (s *Server) transcriptPath(agent cmux.AgentSession) (string, bool) {
-	if agent.Kind == agentKindCodex {
+	switch agent.Kind {
+	case agentKindCodex:
 		return codex.FindRollout(s.options.CodexHome, agent.SessionID)
+	case agentKindPi:
+		return pi.FindSession(s.options.PiAgentDir, agent.SessionID)
 	}
 	return claude.FindTranscript(s.options.ClaudeConfigDir, agent.Cwd, agent.SessionID)
 }
 
 func newTranscript(kind string) transcript {
-	if kind == agentKindCodex {
+	switch kind {
+	case agentKindCodex:
 		return codex.NewTranscript()
+	case agentKindPi:
+		return pi.NewTranscript()
 	}
 	return claude.NewTranscript()
 }

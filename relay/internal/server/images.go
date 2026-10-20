@@ -11,6 +11,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/chat"
 	"github.com/gantoine/muxer/relay/internal/claude"
 	"github.com/gantoine/muxer/relay/internal/cmux"
+	"github.com/gantoine/muxer/relay/internal/pi"
 )
 
 var errImagesUnsupported = unsupported("receive images")
@@ -43,7 +44,7 @@ func (s *session) sendImages(ctx context.Context, current *attachment, text stri
 			return err
 		}
 		if agent.SessionID == "" {
-			return &requestError{Code: "no_agent", Message: "Images can only go to Claude or Codex, and neither is running in this terminal."}
+			return &requestError{Code: "no_agent", Message: "Images can only go to Claude, Codex or Pi, and none of them is running in this terminal."}
 		}
 		return s.server.cmux.SendChat(ctx, agent.SessionID, text, images)
 	})
@@ -79,12 +80,22 @@ func (s *session) transcriptImage(ctx context.Context, current *attachment, ref 
 		return cmux.ChatImage{}, err
 	}
 	path, ok := s.server.transcriptPath(agent)
-	if agent.Kind != agentKindClaude || !ok {
+	if !ok {
 		return cmux.ChatImage{}, gone
 	}
-	image, err := claude.ReadImage(path, ref)
-	if err != nil {
-		return cmux.ChatImage{}, gone
+	switch agent.Kind {
+	case agentKindClaude:
+		image, err := claude.ReadImage(path, ref)
+		if err != nil {
+			return cmux.ChatImage{}, gone
+		}
+		return cmux.ChatImage{Data: image.Data, Format: strings.TrimPrefix(image.MediaType, "image/")}, nil
+	case agentKindPi:
+		image, err := pi.ReadImage(path, ref)
+		if err != nil {
+			return cmux.ChatImage{}, gone
+		}
+		return cmux.ChatImage{Data: image.Data, Format: strings.TrimPrefix(image.MediaType, "image/")}, nil
 	}
-	return cmux.ChatImage{Data: image.Data, Format: strings.TrimPrefix(image.MediaType, "image/")}, nil
+	return cmux.ChatImage{}, gone
 }

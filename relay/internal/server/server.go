@@ -23,6 +23,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/files"
 	"github.com/gantoine/muxer/relay/internal/host"
 	"github.com/gantoine/muxer/relay/internal/notify"
+	"github.com/gantoine/muxer/relay/internal/pi"
 )
 
 const ProtocolVersion = 1
@@ -134,6 +135,7 @@ type Options struct {
 	ClaudeConfigDir    string
 	ClaudeSession      func(surfaceID string) (claude.SessionRef, bool)
 	CodexHome          string
+	PiAgentDir         string
 	Approvals          Approvals
 	Agents             Agents
 	HostUsage          func(context.Context) (host.Usage, error)
@@ -184,6 +186,9 @@ func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, l
 	}
 	if options.CodexHome == "" {
 		options.CodexHome = codex.HomeDir()
+	}
+	if options.PiAgentDir == "" {
+		options.PiAgentDir = pi.AgentDir()
 	}
 	if options.ClaudeSession == nil {
 		options.ClaudeSession = claude.NewResolver(options.ClaudeConfigDir, claude.SystemProcesses{}, claudeScanMaxAge).ForSurface
