@@ -24,7 +24,11 @@ type AdminResponse struct {
 	Devices   []devices.Device `json:"devices,omitempty"`
 }
 
-func ServeAdmin(ctx context.Context, path string, store *devices.Store) error {
+type AdminHooks struct {
+	SyncPostHogCloud func(context.Context)
+}
+
+func ServeAdmin(ctx context.Context, path string, store *devices.Store, hooks AdminHooks) error {
 	_ = os.Remove(path)
 	listener, err := net.Listen("unix", path)
 	if err != nil {
@@ -43,11 +47,11 @@ func ServeAdmin(ctx context.Context, path string, store *devices.Store) error {
 			}
 			return err
 		}
-		go handleAdmin(conn, store)
+		go handleAdmin(ctx, conn, store, hooks)
 	}
 }
 
-func handleAdmin(conn net.Conn, store *devices.Store) {
+func handleAdmin(ctx context.Context, conn net.Conn, store *devices.Store, hooks AdminHooks) {
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	var request AdminRequest
@@ -67,6 +71,14 @@ func handleAdmin(conn net.Conn, store *devices.Store) {
 		for index := range response.Devices {
 			response.Devices[index].TokenHash = ""
 		}
+	case "posthog_cloud_sync":
+		if hooks.SyncPostHogCloud == nil {
+			response.Error = "this relay can't open PostHog Cloud workspaces"
+			break
+		}
+		syncCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		hooks.SyncPostHogCloud(syncCtx)
+		cancel()
 	case "revoke":
 		if err := store.Revoke(request.DeviceID); err != nil {
 			response.Error = err.Error()

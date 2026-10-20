@@ -29,7 +29,7 @@ import (
 
 const ProtocolVersion = 1
 
-var relayFeatures = []string{taskInWorkspaceFeature, postHogCloudFeature, postHogCloudActionsFeature}
+var relayFeatures = []string{taskInWorkspaceFeature, postHogCloudFeature, postHogCloudActionsFeature, postHogCloudStartFeature}
 
 const claudeScanMaxAge = 2 * time.Second
 

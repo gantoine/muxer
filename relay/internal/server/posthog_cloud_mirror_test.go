@@ -49,6 +49,30 @@ func (f *fakeTasksAPI) sent(method string) []fakeCommand {
 func (f *fakeTasksAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if r.Method == http.MethodPost && r.URL.Path == "/api/projects/2/tasks/" {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.tasks = append(f.tasks, mirrorTask{ID: "t5", RunID: "r5", Title: fmt.Sprint(body["description"]), Repository: fmt.Sprint(body["repository"]), Status: "not_started"})
+		_, _ = w.Write([]byte(`{"id":"t5"}`))
+		return
+	}
+	if r.Method == http.MethodPost && r.URL.Path == "/api/projects/2/tasks/t5/runs/" {
+		_, _ = w.Write([]byte(`{"id":"r5","status":"queued"}`))
+		return
+	}
+	if r.Method == http.MethodPost && r.URL.Path == "/api/projects/2/tasks/t5/runs/r5/start/" {
+		for i := range f.tasks {
+			if f.tasks[i].RunID == "r5" {
+				f.tasks[i].Status = "queued"
+			}
+		}
+		_, _ = w.Write([]byte(`{"id":"t5"}`))
+		return
+	}
+	if r.URL.Path == "/api/projects/2/tasks/models/" {
+		_, _ = w.Write([]byte(`{"models":[]}`))
+		return
+	}
 	if r.URL.Path == "/api/projects/2/tasks/" {
 		var rows []map[string]any
 		for _, task := range f.tasks {
@@ -261,6 +285,51 @@ func TestCloudRunsBecomeCmuxWorkspaces(t *testing.T) {
 	}
 }
 
+func TestPhoneStartsACloudRunInItsOwnWorkspace(t *testing.T) {
+	api := &fakeTasksAPI{}
+	server := httptest.NewServer(api)
+	t.Cleanup(server.Close)
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "posthog-cloud.json")
+	if err := posthogcloud.SaveConfig(configPath, posthogcloud.Config{Host: server.URL, ProjectID: 2, APIKey: "k", UserID: 42}); err != nil {
+		t.Fatal(err)
+	}
+	relay := startRelayWith(t, func(options *Options) {
+		options.PostHogCloudConfig = configPath
+		options.PostHogCloudHTTP = server.Client()
+		options.PostHogCloudMirror = filepath.Join(dir, "posthog-cloud-workspaces.json")
+		options.PollInterval.PostHogCloud = time.Hour
+	})
+	relay.cmux.mu.Lock()
+	relay.cmux.growWorkspaces = true
+	relay.cmux.workspaceList = &cmux.WorkspaceList{}
+	relay.cmux.mu.Unlock()
+	ctx, conn := relay.connect(t)
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "hello", "id": "hello"})
+	if features := resultFor(t, ctx, conn, "hello")["data"].(map[string]any)["features"].([]any); !containsAny(features, postHogCloudStartFeature) {
+		t.Fatalf("the welcome must offer cloud starts: %v", features)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "posthog_cloud_options", "id": "options"})
+	options := resultFor(t, ctx, conn, "options")["data"].(map[string]any)
+	if options["connected"] != true || options["claude_plan"] != false || len(options["agents"].([]any)) != 2 {
+		t.Fatalf("options = %v", options)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "posthog_cloud_start", "id": "plan", "repository": "acme/app", "agent": "claude", "claude_plan": true, "prompt": "x"})
+	if result := resultFor(t, ctx, conn, "plan"); errorCode(result) != "posthog_cloud_no_claude_token" {
+		t.Fatalf("a Claude-plan run without a saved token must be refused: %v", result)
+	}
+	_ = wsjson.Write(ctx, conn, map[string]any{"type": "posthog_cloud_start", "id": "start", "repository": "acme/app", "source": "team:7", "agent": "codex", "prompt": "Fix login"})
+	result := resultFor(t, ctx, conn, "start")
+	if result["ok"] != true {
+		t.Fatalf("start = %v", result)
+	}
+	mirrored, ok := relay.server.mirror.run("r5")
+	data := result["data"].(map[string]any)
+	if !ok || data["workspace_id"] != mirrored.WorkspaceID || data["surface_id"] != mirrored.SurfaceID || mirrored.Title != "Fix login" {
+		t.Fatalf("the start must answer with the run's workspace: %v %+v", data, mirrored)
+	}
+}
+
 func TestMirrorRulesAndLanes(t *testing.T) {
 	now := time.Now()
 	task := func(status, completed string) posthogcloud.Task {
@@ -286,6 +355,9 @@ func TestMirrorRulesAndLanes(t *testing.T) {
 	}
 	if groupName("") != "PostHog Cloud" || groupName(" acme/app ") != "acme/app" {
 		t.Fatal("groupName")
+	}
+	if firstPromptLine("  Fix the login bug\nand add a test") != "Fix the login bug" {
+		t.Fatal("firstPromptLine")
 	}
 	if shellQuote("it's") != `'it'\''s'` {
 		t.Fatal("shellQuote")

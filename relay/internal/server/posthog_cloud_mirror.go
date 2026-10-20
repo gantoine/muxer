@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gantoine/muxer/relay/internal/chat"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/posthogcloud"
 )
@@ -22,6 +23,7 @@ const (
 	postHogCloudCreatesPerSync   = 4
 	postHogCloudUngroupedName    = "PostHog Cloud"
 	postHogCloudDescriptionStart = "PostHog Cloud"
+	postHogCloudTitleLength      = 60
 )
 
 type mirroredRun struct {
@@ -267,7 +269,7 @@ func (m *cloudMirror) create(ctx context.Context, task posthogcloud.Task) {
 		delete(m.starting, runID)
 		m.mu.Unlock()
 	}()
-	title := cmp.Or(strings.TrimSpace(task.Title), "PostHog Cloud run")
+	title := cmp.Or(strings.TrimSpace(task.Title), firstPromptLine(task.Description), "PostHog Cloud run")
 	home, _ := os.UserHomeDir()
 	created, err := m.server.cmux.CreateWorkspaceWithEnv(ctx, title, home, m.server.options.PostHogCloudEnv)
 	if err != nil {
@@ -298,6 +300,11 @@ func (m *cloudMirror) create(ctx context.Context, task posthogcloud.Task) {
 		}
 		_ = m.server.cmux.RenameTerminal(readyCtx, created.WorkspaceID, created.SurfaceID, title)
 	}()
+}
+
+func firstPromptLine(text string) string {
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	return chat.Truncate(strings.TrimSpace(first), postHogCloudTitleLength)
 }
 
 func shellQuote(value string) string {

@@ -39,6 +39,7 @@ type Task struct {
 	ID            string      `json:"id"`
 	Number        int         `json:"task_number"`
 	Title         string      `json:"title"`
+	Description   string      `json:"description_preview"`
 	Repository    string      `json:"repository"`
 	OriginProduct string      `json:"origin_product"`
 	LatestRun     *RunSummary `json:"latest_run"`

@@ -2,17 +2,20 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"golang.org/x/term"
 
 	"github.com/gantoine/muxer/relay/internal/posthogcloud"
+	"github.com/gantoine/muxer/relay/internal/server"
 )
 
 const (
@@ -23,7 +26,7 @@ const (
 
 func runPostHogCloud(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: muxer posthog-cloud connect|disconnect|status|claude-token|attach")
+		return errors.New("usage: muxer posthog-cloud connect|disconnect|status|claude-token|new|attach")
 	}
 	paths, err := statePaths()
 	if err != nil {
@@ -56,6 +59,8 @@ func runPostHogCloud(args []string) error {
 		return saveClaudeToken(paths, args[1:])
 	case "attach":
 		return attachPostHogCloudRun(paths, args[1:])
+	case "new":
+		return startPostHogCloudRun(paths, args[1:])
 	}
 	return fmt.Errorf("unknown posthog-cloud command %q", args[0])
 }
@@ -99,6 +104,60 @@ func connectPostHogCloud(paths paths, args []string) error {
 		return err
 	}
 	fmt.Printf("Connected as %s, project %d. Open Devices in the app to see your runs.\n", config.Email, config.ProjectID)
+	return nil
+}
+
+func startPostHogCloudRun(paths paths, args []string) error {
+	flags := flag.NewFlagSet("posthog-cloud new", flag.ContinueOnError)
+	repository := flags.String("repo", "", "the GitHub repository to work in, as owner/name")
+	agent := flags.String("agent", posthogcloud.AgentClaude, "claude or codex")
+	claudePlan := flags.Bool("claude-plan", false, "bill Claude to your own Claude plan instead of PostHog (needs `muxer posthog-cloud claude-token`)")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	prompt := strings.TrimSpace(strings.Join(flags.Args(), " "))
+	if *repository == "" || prompt == "" {
+		return errors.New(`usage: muxer posthog-cloud new --repo owner/name [--agent claude|codex] [--claude-plan] "what to do"`)
+	}
+	config, ok, err := posthogcloud.LoadConfig(paths.postHogCloud)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("connect PostHog Cloud first with `muxer posthog-cloud connect`")
+	}
+	if *claudePlan && config.ClaudeToken == "" {
+		return errors.New("save a Claude token first with `muxer posthog-cloud claude-token`")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	client := posthogcloud.NewClient(config, nil)
+	wanted := strings.ToLower(strings.TrimSpace(*repository))
+	_, short, _ := strings.Cut(wanted, "/")
+	found, err := client.Repositories(ctx, cmp.Or(short, wanted))
+	if err != nil {
+		return fmt.Errorf("list your repositories: %w", err)
+	}
+	var chosen *posthogcloud.Repository
+	for i := range found {
+		if found[i].Name == wanted {
+			chosen = &found[i]
+		}
+	}
+	if chosen == nil {
+		return fmt.Errorf("PostHog can't reach %s through your GitHub integrations", wanted)
+	}
+	task, run, err := client.StartRun(ctx, posthogcloud.StartRequest{Repository: *chosen, Agent: *agent, ClaudePlan: *claudePlan, Prompt: prompt})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Started %s.\n", strings.TrimSuffix(config.Host, "/")+"/project/"+strconv.Itoa(config.ProjectID)+"/tasks/"+task.ID)
+	if _, err := server.CallAdmin(paths.admin, server.AdminRequest{Command: "posthog_cloud_sync"}); err != nil {
+		fmt.Println("The relay isn't running, so no cmux workspace opened. Watch it with:")
+		fmt.Printf("  muxer posthog-cloud attach --task %s --run %s\n", task.ID, run.ID)
+		return nil
+	}
+	fmt.Println("Its workspace is open in cmux.")
 	return nil
 }
 
@@ -147,7 +206,7 @@ func readAPIKey() (string, error) {
 		return key, nil
 	}
 	fmt.Println("Create a personal API key in PostHog under Settings › Personal API keys,")
-	fmt.Println("with the task:read, task:write and user:read scopes.")
+	fmt.Println("with the task:read, task:write, user:read and integration:read scopes.")
 	return readSecret("Paste it here: ")
 }
 

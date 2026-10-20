@@ -17,6 +17,7 @@ import (
 	"github.com/gantoine/muxer/relay/internal/approvals"
 	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/devices"
+	"github.com/gantoine/muxer/relay/internal/posthogcloud"
 	"github.com/gantoine/muxer/relay/internal/pubsub"
 	"github.com/gantoine/muxer/relay/internal/screen"
 )
@@ -79,31 +80,34 @@ type session struct {
 }
 
 var parallelRequests = map[string]bool{
-	"history":                true,
-	"chat_image":             true,
-	"chat_files":             true,
-	"recent_sessions":        true,
-	"resume_session":         true,
-	"installed_agents":       true,
-	"start_agent_task":       true,
-	"notifications":          true,
-	"keep_awake":             true,
-	"top":                    true,
-	"host_usage":             true,
-	"vms":                    true,
-	"automations":            true,
-	"automation_logs":        true,
-	"set_automation_enabled": true,
-	"reload_automations":     true,
-	"port_link":              true,
-	"port_links":             true,
-	"expose_port":            true,
-	"unexpose_port":          true,
-	"exposed_ports":          true,
-	"posthog_cloud_tasks":    true,
-	"posthog_cloud_send":     true,
-	"posthog_cloud_stop":     true,
-	"answer_approval":        true,
+	"history":                    true,
+	"chat_image":                 true,
+	"chat_files":                 true,
+	"recent_sessions":            true,
+	"resume_session":             true,
+	"installed_agents":           true,
+	"start_agent_task":           true,
+	"notifications":              true,
+	"keep_awake":                 true,
+	"top":                        true,
+	"host_usage":                 true,
+	"vms":                        true,
+	"automations":                true,
+	"automation_logs":            true,
+	"set_automation_enabled":     true,
+	"reload_automations":         true,
+	"port_link":                  true,
+	"port_links":                 true,
+	"expose_port":                true,
+	"unexpose_port":              true,
+	"exposed_ports":              true,
+	"posthog_cloud_tasks":        true,
+	"posthog_cloud_send":         true,
+	"posthog_cloud_options":      true,
+	"posthog_cloud_repositories": true,
+	"posthog_cloud_start":        true,
+	"posthog_cloud_stop":         true,
+	"answer_approval":            true,
 }
 
 func newSession(server *Server, conn *websocket.Conn, device devices.Device) *session {
@@ -532,6 +536,36 @@ func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment
 			return nil, invalid("watch_posthog_cloud_run needs task_id and run_id.")
 		}
 		return nil, s.watchPostHogCloudRun(request.TaskID, request.RunID)
+	case "posthog_cloud_options":
+		return s.server.postHogCloudOptions()
+	case "posthog_cloud_repositories":
+		var request struct {
+			Query string `json:"query"`
+		}
+		_ = json.Unmarshal(raw, &request)
+		return s.server.postHogCloudRepositories(ctx, request.Query)
+	case "posthog_cloud_start":
+		var request struct {
+			Repository string `json:"repository"`
+			Source     string `json:"source"`
+			Agent      string `json:"agent"`
+			ClaudePlan bool   `json:"claude_plan"`
+			Prompt     string `json:"prompt"`
+		}
+		if err := json.Unmarshal(raw, &request); err != nil || request.Repository == "" || request.Agent == "" || strings.TrimSpace(request.Prompt) == "" {
+			return nil, invalid("posthog_cloud_start needs repository, agent and prompt.")
+		}
+		if err := validText("prompt", request.Prompt); err != nil {
+			return nil, err
+		}
+		startCtx, cancelStart := context.WithTimeout(s.ctx, postHogCloudActionTimeout)
+		defer cancelStart()
+		return s.server.startPostHogCloudRun(startCtx, posthogcloud.StartRequest{
+			Repository: posthogcloud.Repository{Name: request.Repository, Source: request.Source},
+			Agent:      request.Agent,
+			ClaudePlan: request.ClaudePlan,
+			Prompt:     request.Prompt,
+		})
 	case "posthog_cloud_send", "posthog_cloud_stop":
 		var request struct {
 			TaskID string `json:"task_id"`

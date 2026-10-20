@@ -157,15 +157,16 @@ On the phone, open a computer's settings and tap **Automations** to see its rule
 
 If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the relay can bring your runs into cmux. Each run that is in progress, or finished in the last 24 hours, gets its own workspace, grouped by repository like the rest of your work. The workspace shows the run as it goes and its status lane follows the agent: working, needs attention when it asks for approval, review when it is waiting for your reply, and done. Type in it to reply, or use `/approve`, `/always`, `/deny` and `/stop`.
 
-On the phone these workspaces open as a chat, like a local agent: you can reply (a message sent while the agent works steers it), stop it with Esc, and answer its approvals, questions and plans. A reply to a finished run reopens it. When a run asks for approval, finishes its turn or fails, the phone tells you. The relay closes the workspaces it opened a day after their run ends, unless you pinned or renamed them, and it doesn't reopen a workspace you closed.
+On the phone these workspaces open as a chat, like a local agent: you can reply (a message sent while the agent works steers it), stop it with Esc, and answer its approvals, questions and plans. A reply to a finished run reopens it. When a run asks for approval, finishes its turn or fails, the phone tells you. To start a run from the phone, open **New task** and pick **PostHog Cloud**: choose the agent, the repository and who pays, then write the prompt. From a terminal, `muxer posthog-cloud new --repo owner/name "what to do"` does the same, and the run's workspace opens in cmux right away. The relay closes the workspaces it opened a day after their run ends, unless you pinned or renamed them, and it doesn't reopen a workspace you closed.
 
-Create a personal API key in PostHog under **Settings › Personal API keys** with the `task:read`, `task:write` and `user:read` scopes, then connect the relay to it:
+Create a personal API key in PostHog under **Settings › Personal API keys** with the `task:read`, `task:write`, `user:read` and `integration:read` scopes, then connect the relay to it:
 
 ```sh
 muxer posthog-cloud connect                 # US cloud; add --host https://eu.posthog.com for EU
 muxer posthog-cloud status
 muxer posthog-cloud disconnect
 muxer posthog-cloud claude-token            # optional, see below
+muxer posthog-cloud new --repo owner/name [--agent claude|codex] [--claude-plan] "what to do"
 ```
 
 `connect` asks for the key without echoing it (or reads `POSTHOG_PERSONAL_API_KEY`), checks it, and saves it in the relay's state folder, readable only by you. The relay asks PostHog for your tasks directly. The key never reaches the phone.

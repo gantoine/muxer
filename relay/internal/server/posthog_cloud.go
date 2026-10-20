@@ -362,3 +362,72 @@ func (s *session) followMirroredChat(ctx context.Context, current *attachment, t
 		}
 	}
 }
+
+const (
+	postHogCloudStartFeature = "posthog_cloud_start"
+	postHogCloudMirrorWait   = 500 * time.Millisecond
+)
+
+type postHogCloudOptions struct {
+	Connected  bool     `json:"connected"`
+	Agents     []string `json:"agents"`
+	ClaudePlan bool     `json:"claude_plan"`
+}
+
+func (s *Server) postHogCloudOptions() (postHogCloudOptions, error) {
+	_, config, ok, err := s.postHogCloudClient()
+	if err != nil || !ok {
+		return postHogCloudOptions{Agents: []string{}}, err
+	}
+	return postHogCloudOptions{
+		Connected:  true,
+		Agents:     []string{posthogcloud.AgentClaude, posthogcloud.AgentCodex},
+		ClaudePlan: config.ClaudeToken != "",
+	}, nil
+}
+
+func (s *Server) postHogCloudRepositories(ctx context.Context, query string) (map[string]any, error) {
+	client, _, ok, err := s.postHogCloudClient()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errPostHogCloudNotConnected
+	}
+	repositories, err := client.Repositories(ctx, query)
+	if err != nil {
+		return nil, postHogCloudError(err)
+	}
+	if repositories == nil {
+		repositories = []posthogcloud.Repository{}
+	}
+	return map[string]any{"repositories": repositories}, nil
+}
+
+func (s *Server) startPostHogCloudRun(ctx context.Context, request posthogcloud.StartRequest) (terminalRef, error) {
+	client, config, ok, err := s.postHogCloudClient()
+	if err != nil {
+		return terminalRef{}, err
+	}
+	if !ok {
+		return terminalRef{}, errPostHogCloudNotConnected
+	}
+	if request.ClaudePlan && config.ClaudeToken == "" {
+		return terminalRef{}, &requestError{Code: "posthog_cloud_no_claude_token", Message: "No Claude token is saved on the computer. Run `muxer posthog-cloud claude-token` there first."}
+	}
+	_, run, err := client.StartRun(ctx, request)
+	if err != nil {
+		return terminalRef{}, postHogCloudError(err)
+	}
+	for {
+		s.SyncPostHogCloud(ctx)
+		if mirrored, ok := s.mirror.run(run.ID); ok {
+			return terminalRef{WorkspaceID: mirrored.WorkspaceID, SurfaceID: mirrored.SurfaceID}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return terminalRef{}, &requestError{Code: "posthog_cloud_started", Message: "The run started, but its workspace didn't open in time. It will appear in the workspace list shortly."}
+		case <-time.After(postHogCloudMirrorWait):
+		}
+	}
+}

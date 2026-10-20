@@ -5,6 +5,7 @@ import com.gantoine.muxer.protocol.WorkspaceInfo
 object NewTask {
     val agents = listOf("claude", "codex", "pi")
     const val IN_WORKSPACE = "start_agent_task.workspace_id"
+    const val CLOUD_START = "posthog_cloud_start"
     const val SEARCHABLE_WORKSPACES = 6
 
     fun canStart(agent: String?, folder: String, prompt: String): Boolean =
@@ -12,6 +13,9 @@ object NewTask {
 
     fun canStartIn(agent: String?, workspace: WorkspaceInfo?, prompt: String): Boolean =
         agent != null && workspace != null && canHost(workspace) && prompt.isNotBlank()
+
+    fun canStartInCloud(agent: String?, repository: String?, prompt: String): Boolean =
+        agent != null && !repository.isNullOrBlank() && prompt.isNotBlank()
 
     fun canHost(workspace: WorkspaceInfo): Boolean = workspace.remote == null
 

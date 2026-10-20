@@ -44,6 +44,8 @@ Usage:
                                                 Show your PostHog Tasks cloud runs in the app
   muxer posthog-cloud disconnect                Forget the PostHog API key
   muxer posthog-cloud status                    Show the connected PostHog account
+  muxer posthog-cloud new --repo OWNER/NAME [--agent claude|codex] [--claude-plan] "PROMPT"
+                                                Start a cloud run and open it in cmux
   muxer posthog-cloud attach --task ID --run ID  Show a cloud run in this terminal (the relay opens these)
   muxer posthog-cloud claude-token [--clear]    Save a ` + "`claude setup-token`" + ` token for runs on your Claude plan
   muxer serve [--listen ADDR] [--name NAME]     Run the relay in the foreground
@@ -129,18 +131,18 @@ func runServe(args []string) error {
 	go approvalTracker.Run(ctx)
 	agentTracker := agents.NewTracker(client, logger)
 	go agentTracker.Run(ctx)
-	adminErr := make(chan error, 1)
-	go func() {
-		if err := server.ServeAdmin(ctx, paths.admin, store); err != nil {
-			adminErr <- fmt.Errorf("admin socket %s: %w", paths.admin, err)
-			stop()
-		}
-	}()
 
 	agentFinder := host.NewAgentFinder(host.LoginShell(), server.TaskAgents...)
 	go agentFinder.Installed(ctx)
 
 	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, InstalledAgents: agentFinder.Installed, LoginShell: host.LoginShell(), Tailnet: tailnet.CLI{}, Listeners: host.Listeners, ListeningProcesses: host.ListeningProcesses, ParentProcesses: host.ParentProcesses, ExposedPorts: paths.exposedPorts, RelayPort: relayPort(listen), PostHogCloudConfig: paths.postHogCloud, PostHogCloudMirror: paths.cloudMirror, PostHogCloudExecutable: executable(), PostHogCloudEnv: stateDirEnv()}, logger)
+	adminErr := make(chan error, 1)
+	go func() {
+		if err := server.ServeAdmin(ctx, paths.admin, store, server.AdminHooks{SyncPostHogCloud: relay.SyncPostHogCloud}); err != nil {
+			adminErr <- fmt.Errorf("admin socket %s: %w", paths.admin, err)
+			stop()
+		}
+	}()
 	categories := slices.Concat([]string{"notification"}, agents.EventCategories, server.WorkspaceEventCategories)
 	go events.NewStream(client, logger, cmux.EventFilter{Categories: categories}, hub, approvalTracker, agentTracker, relay).Run(ctx)
 	httpServer := &http.Server{

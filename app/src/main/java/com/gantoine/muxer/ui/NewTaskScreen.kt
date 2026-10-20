@@ -1,5 +1,6 @@
 package com.gantoine.muxer.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
@@ -51,10 +53,15 @@ import com.gantoine.muxer.model.AgentNames
 import com.gantoine.muxer.model.NewTask
 import com.gantoine.muxer.model.WorkspaceListing
 import com.gantoine.muxer.net.ConnectionState
+import com.gantoine.muxer.protocol.PostHogCloudOptions
+import com.gantoine.muxer.protocol.PostHogCloudRepository
 import com.gantoine.muxer.protocol.RecentSession
 import com.gantoine.muxer.protocol.WorkspaceInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private const val REPOSITORY_SEARCH_DELAY_MILLIS = 250L
+private const val MAX_REPOSITORY_CHOICES = 8
 private const val REQUEST = "start_agent_task"
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -85,10 +92,29 @@ fun NewTaskScreen(
     var search by rememberSaveable { mutableStateOf("") }
     var startsInWorkspaces by remember { mutableStateOf(false) }
     var starting by remember { mutableStateOf(false) }
+    var cloud by remember { mutableStateOf<PostHogCloudOptions?>(null) }
+    var inCloud by rememberSaveable { mutableStateOf(false) }
+    var cloudAgent by rememberSaveable { mutableStateOf<String?>(null) }
+    var claudePlan by rememberSaveable { mutableStateOf(false) }
+    var repository by remember { mutableStateOf<PostHogCloudRepository?>(null) }
+    var repositorySearch by rememberSaveable { mutableStateOf("") }
+    var repositories by remember { mutableStateOf<List<PostHogCloudRepository>?>(null) }
+    val offersCloud = cloud?.connected == true && cloud?.agents?.isNotEmpty() == true
     val chosenWorkspace = workspaces?.firstOrNull { it.id == workspaceId }?.takeUnless { picking }
     val usesWorkspace = inWorkspace && startsInWorkspaces
 
+    suspend fun loadCloud() {
+        val target = connection ?: return
+        val connected = target.state.value as? ConnectionState.Connected ?: return
+        if (!connected.has(NewTask.CLOUD_START)) return
+        target.postHogCloudOptions().onSuccess { options ->
+            cloud = options
+            if (cloudAgent !in options.agents) cloudAgent = options.agents.firstOrNull()
+        }
+    }
+
     suspend fun load() {
+        loadCloud()
         val target = connection?.takeIf { it.supports(REQUEST) } ?: return
         target.installedAgents()
             .onSuccess { found ->
@@ -99,7 +125,21 @@ fun NewTaskScreen(
             .onFailure { loadFailure = it }
     }
 
+    fun startInCloud() {
+        val target = connection ?: return
+        val chosenAgent = cloudAgent ?: return
+        val chosenRepository = repository ?: return
+        starting = true
+        scope.launch {
+            target.startPostHogCloudRun(chosenRepository, chosenAgent, claudePlan && chosenAgent == "claude", prompt.trim())
+                .onSuccess { onOpenTerminal(it.workspaceId, it.surfaceId) }
+                .onFailure { snackbar.showSnackbar(it.message ?: "Couldn't start the cloud run.") }
+            starting = false
+        }
+    }
+
     fun start() {
+        if (inCloud) return startInCloud()
         val target = connection ?: return
         val chosen = agent ?: return
         val workspace = chosenWorkspace.takeIf { usesWorkspace }
@@ -124,6 +164,14 @@ fun NewTaskScreen(
 
     LaunchedEffect(state) {
         (state as? ConnectionState.Connected)?.let { startsInWorkspaces = it.has(NewTask.IN_WORKSPACE) }
+    }
+
+    LaunchedEffect(inCloud, repositorySearch, connection) {
+        if (!inCloud) return@LaunchedEffect
+        delay(REPOSITORY_SEARCH_DELAY_MILLIS)
+        connection?.postHogCloudRepositories(repositorySearch.trim())
+            ?.onSuccess { repositories = it }
+            ?.onFailure { snackbar.showSnackbar(it.message ?: "Couldn't list your repositories.") }
     }
 
     Scaffold(
@@ -151,23 +199,38 @@ fun NewTaskScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     ConnectionBanner(state)
-                    if (startsInWorkspaces) {
+                    if (startsInWorkspaces || offersCloud) {
                         TaskLabel("Where", first = true)
-                        if (choosingWhere) Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (choosingWhere) Row(
+                            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             FilterChip(
-                                selected = !inWorkspace,
-                                onClick = { inWorkspace = false },
+                                selected = !inWorkspace && !inCloud,
+                                onClick = {
+                                    inWorkspace = false
+                                    inCloud = false
+                                },
                                 label = { Text("New workspace") },
                                 leadingIcon = { Icon(Icons.Filled.CreateNewFolder, contentDescription = null, Modifier.size(18.dp)) },
                             )
-                            FilterChip(
-                                selected = inWorkspace,
-                                onClick = { inWorkspace = true },
+                            if (startsInWorkspaces) FilterChip(
+                                selected = inWorkspace && !inCloud,
+                                onClick = {
+                                    inWorkspace = true
+                                    inCloud = false
+                                },
                                 label = { Text("Existing workspace") },
                                 leadingIcon = { Icon(Icons.Filled.Terminal, contentDescription = null, Modifier.size(18.dp)) },
                             )
+                            if (offersCloud) FilterChip(
+                                selected = inCloud,
+                                onClick = { inCloud = true },
+                                label = { Text("PostHog Cloud") },
+                                leadingIcon = { Icon(Icons.Outlined.CloudSync, contentDescription = null, Modifier.size(18.dp)) },
+                            )
                         }
-                        if (inWorkspace) {
+                        if (inWorkspace && !inCloud) {
                             WorkspacePicker(
                                 workspaces = workspaces.orEmpty(),
                                 chosen = chosenWorkspace,
@@ -186,7 +249,23 @@ fun NewTaskScreen(
                             )
                         }
                     }
-                    TaskLabel("Agent", first = !startsInWorkspaces)
+                    if (inCloud) {
+                        CloudTaskFields(
+                            agents = cloud?.agents.orEmpty(),
+                            agent = cloudAgent,
+                            onAgent = { cloudAgent = it },
+                            offersClaudePlan = cloud?.claudePlan == true,
+                            claudePlan = claudePlan,
+                            onClaudePlan = { claudePlan = it },
+                            repository = repository,
+                            repositories = repositories,
+                            search = repositorySearch,
+                            onSearch = { repositorySearch = it },
+                            onPick = { repository = it },
+                            onChange = { repository = null },
+                        )
+                    } else {
+                    TaskLabel("Agent", first = !startsInWorkspaces && !offersCloud)
                     if (found.isEmpty()) {
                         Text(
                             "None of Claude Code, Codex or Pi is installed on $macName.",
@@ -208,7 +287,8 @@ fun NewTaskScreen(
                             }
                         }
                     }
-                    if (!usesWorkspace) {
+                    }
+                    if (!usesWorkspace && !inCloud) {
                         TaskLabel("Folder")
                         LabeledTextField(
                             value = folder,
@@ -225,11 +305,11 @@ fun NewTaskScreen(
                     LabeledTextField(
                         value = prompt,
                         onValueChange = { prompt = it },
-                        label = "What should ${agent?.let(AgentNames::display) ?: "the agent"} do?",
+                        label = "What should ${(if (inCloud) cloudAgent else agent)?.let(AgentNames::display) ?: "the agent"} do?",
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp).padding(horizontal = 16.dp),
                     )
-                    if (!usesWorkspace) {
+                    if (!usesWorkspace && !inCloud) {
                         LabeledTextField(
                             value = title,
                             onValueChange = { title = it },
@@ -239,7 +319,9 @@ fun NewTaskScreen(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                         )
                     }
-                    val ready = if (usesWorkspace) {
+                    val ready = if (inCloud) {
+                        NewTask.canStartInCloud(cloudAgent, repository?.name, prompt)
+                    } else if (usesWorkspace) {
                         NewTask.canStartIn(agent, chosenWorkspace, prompt)
                     } else {
                         NewTask.canStart(agent, folder, prompt)
@@ -252,12 +334,101 @@ fun NewTaskScreen(
                         if (starting) {
                             LoadingIndicator(Modifier.size(32.dp), color = MaterialTheme.colorScheme.onPrimary)
                         } else {
-                            Text("Start task", style = MaterialTheme.typography.titleMedium)
+                            Text(if (inCloud) "Start cloud run" else "Start task", style = MaterialTheme.typography.titleMedium)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CloudTaskFields(
+    agents: List<String>,
+    agent: String?,
+    onAgent: (String) -> Unit,
+    offersClaudePlan: Boolean,
+    claudePlan: Boolean,
+    onClaudePlan: (Boolean) -> Unit,
+    repository: PostHogCloudRepository?,
+    repositories: List<PostHogCloudRepository>?,
+    search: String,
+    onSearch: (String) -> Unit,
+    onPick: (PostHogCloudRepository) -> Unit,
+    onChange: () -> Unit,
+) {
+    TaskLabel("Agent")
+    Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        agents.forEach { option ->
+            FilterChip(
+                selected = agent == option,
+                onClick = { onAgent(option) },
+                label = { Text(AgentNames.display(option) ?: option) },
+                leadingIcon = { Icon(painterResource(AgentGlyphs.agent(option)), contentDescription = null, Modifier.size(18.dp)) },
+            )
+        }
+    }
+    if (agent == "claude" && offersClaudePlan) {
+        TaskLabel("Who pays")
+        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !claudePlan, onClick = { onClaudePlan(false) }, label = { Text("PostHog") })
+            FilterChip(selected = claudePlan, onClick = { onClaudePlan(true) }, label = { Text("Your Claude plan") })
+        }
+    }
+    TaskLabel("Repository")
+    if (repository != null) {
+        RepositoryChoice(repository, index = 0, count = 1, onClickLabel = "Pick another repository", onClick = onChange) {
+            Text("Change", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        }
+        return
+    }
+    LabeledTextField(
+        value = search,
+        onValueChange = onSearch,
+        label = "Search repositories",
+        singleLine = true,
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+    )
+    val shown = repositories.orEmpty().take(MAX_REPOSITORY_CHOICES)
+    when {
+        repositories == null -> Text(
+            "Loading your repositories…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 28.dp),
+        )
+        shown.isEmpty() -> Text(
+            if (search.isNotBlank()) "No repositories match \"${search.trim()}\"." else "PostHog can't reach any of your GitHub repositories.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 28.dp),
+        )
+    }
+    shown.forEachIndexed { index, choice ->
+        RepositoryChoice(choice, index, shown.size, onClickLabel = "Run in this repository", onClick = { onPick(choice) })
+    }
+}
+
+@Composable
+private fun RepositoryChoice(
+    repository: PostHogCloudRepository,
+    index: Int,
+    count: Int,
+    onClickLabel: String,
+    onClick: () -> Unit,
+    trailing: @Composable () -> Unit = {},
+) {
+    Row(
+        Modifier.groupedRow(groupedShape(index, count), onClick = onClick, onClickLabel = onClickLabel),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(16.dp))
+        Text(repository.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        trailing()
     }
 }
 

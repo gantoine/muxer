@@ -68,4 +68,12 @@ class NewTaskTest {
         )
         assertTrue(ConnectionState.Connected(decoded).has(NewTask.IN_WORKSPACE))
     }
+
+    @Test
+    fun aCloudRunNeedsAnAgentARepositoryAndAPrompt() {
+        assertTrue(NewTask.canStartInCloud("claude", "acme/app", "fix the login bug"))
+        assertFalse(NewTask.canStartInCloud(null, "acme/app", "fix the login bug"))
+        assertFalse(NewTask.canStartInCloud("claude", null, "fix the login bug"))
+        assertFalse(NewTask.canStartInCloud("claude", "acme/app", "  "))
+    }
 }

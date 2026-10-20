@@ -387,6 +387,19 @@ data class CloudVm(
 data class CloudVmsResponse(val vms: List<CloudVm> = emptyList(), val plan: String? = null)
 
 @Serializable
+data class PostHogCloudOptions(
+    val connected: Boolean = false,
+    val agents: List<String> = emptyList(),
+    val claudePlan: Boolean = false,
+)
+
+@Serializable
+data class PostHogCloudRepository(val name: String, val source: String? = null)
+
+@Serializable
+data class PostHogCloudRepositories(val repositories: List<PostHogCloudRepository> = emptyList())
+
+@Serializable
 data class PostHogCloudRun(
     val taskId: String,
     val runId: String,

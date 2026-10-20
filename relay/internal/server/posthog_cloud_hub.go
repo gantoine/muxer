@@ -183,6 +183,10 @@ func (h *cloudHub) run(ctx context.Context) {
 	}
 }
 
+func (s *Server) SyncPostHogCloud(ctx context.Context) {
+	s.cloud.refreshBackground(ctx)
+}
+
 func (h *cloudHub) refreshBackground(ctx context.Context) {
 	client, _, ok, err := h.server.postHogCloudClient()
 	if err != nil || !ok {

@@ -34,6 +34,9 @@ import com.gantoine.muxer.protocol.NotificationMessage
 import com.gantoine.muxer.protocol.NotificationsResponse
 import com.gantoine.muxer.protocol.PortLink
 import com.gantoine.muxer.protocol.PostHogCloudChatMessage
+import com.gantoine.muxer.protocol.PostHogCloudOptions
+import com.gantoine.muxer.protocol.PostHogCloudRepositories
+import com.gantoine.muxer.protocol.PostHogCloudRepository
 import com.gantoine.muxer.protocol.PostHogCloudRun
 import com.gantoine.muxer.protocol.PostHogCloudRunErrorMessage
 import com.gantoine.muxer.protocol.PostHogCloudRunMessage
@@ -567,6 +570,29 @@ class RelayConnection(
         _cloudRunError.value = null
         send("unwatch_posthog_cloud_run")
     }
+
+    suspend fun postHogCloudOptions(): Result<PostHogCloudOptions> =
+        requestAs("posthog_cloud_options", missing = "The computer sent no PostHog Cloud options.")
+
+    suspend fun postHogCloudRepositories(query: String): Result<List<PostHogCloudRepository>> =
+        requestAs<PostHogCloudRepositories>(
+            "posthog_cloud_repositories",
+            buildJsonObject { put("query", query) },
+            "The computer sent no repositories.",
+        ).map { it.repositories }
+
+    suspend fun startPostHogCloudRun(repository: PostHogCloudRepository, agent: String, claudePlan: Boolean, prompt: String): Result<CreatedWorkspace> =
+        requestAs(
+            "posthog_cloud_start",
+            buildJsonObject {
+                put("repository", repository.name)
+                repository.source?.let { put("source", it) }
+                put("agent", agent)
+                put("claude_plan", claudePlan)
+                put("prompt", prompt)
+            },
+            "The computer didn't say where the run opened.",
+        )
 
     suspend fun postHogCloudSend(taskId: String, runId: String, text: String): Result<Unit> =
         request("posthog_cloud_send", buildJsonObject {
