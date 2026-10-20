@@ -183,7 +183,7 @@ class Notifier(
             .setContentIntent(contentIntent(mac.id, approval.workspaceId, approval.surfaceId, approval.posthogTaskId, approval.posthogRunId, notificationId))
             .hiddenOnLockScreen(context, requireUnlock(), APPROVALS_CHANNEL, LockScreenText.NEEDS_YOU)
         approvalActions(mac.id, approval).forEach(builder::addAction)
-        if (!approval.isPostHogCloud) {
+        if (!approval.opensPostHogCloudRun) {
             builder.setShortcutId(ConversationShortcuts.id(mac.id, approval.workspaceId))
             bubble(target, notificationId)?.let(builder::setBubbleMetadata)
         }
@@ -300,7 +300,7 @@ class Notifier(
         )
 
     private fun contentIntent(macId: String, workspaceId: String?, surfaceId: String?, posthogTaskId: String?, posthogRunId: String?, requestCode: Int): PendingIntent =
-        if (posthogTaskId == null || posthogRunId == null) {
+        if (posthogTaskId == null || posthogRunId == null || !surfaceId.isNullOrBlank()) {
             openTerminalIntent(macId, workspaceId, surfaceId, requestCode)
         } else {
             PendingIntent.getActivity(
@@ -337,7 +337,7 @@ class Notifier(
                 .putExtra(EXTRA_POSTHOG_RUN_ID, runId)
 
         fun openFor(context: Context, macId: String, approval: Approval): Intent =
-            if (approval.isPostHogCloud) {
+            if (approval.opensPostHogCloudRun) {
                 openPostHogCloudRun(context, macId, approval.posthogTaskId!!, approval.posthogRunId!!)
             } else {
                 openTerminal(context, macId, approval.workspaceId, approval.surfaceId)

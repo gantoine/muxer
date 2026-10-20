@@ -20,7 +20,6 @@ import (
 const (
 	postHogCloudApprovalPrefix   = "phc:"
 	postHogCloudCredentialWindow = 120 * time.Second
-	postHogCloudCommandRetry     = 2 * time.Second
 )
 
 type cloudHub struct {
@@ -114,6 +113,15 @@ func (h *cloudHub) live(runID string) (status, state string) {
 	return run.Status, state
 }
 
+func (h *cloudHub) agent(runID string) string {
+	feed, ok := h.feed(runID)
+	if !ok {
+		return ""
+	}
+	_, run, _, _ := feed.current().Snapshot()
+	return run.RuntimeAdapter
+}
+
 func (h *cloudHub) subscribe(client *posthogcloud.Client, taskID, runID string) *cloudSubscription {
 	feed := h.acquire(client, taskID, runID)
 	sub := &cloudSubscription{feed: feed, updates: make(chan posthogcloud.Update, postHogCloudSubscriberBuffer), wake: make(chan struct{}, 1)}
@@ -204,6 +212,7 @@ func (h *cloudHub) refreshBackground(ctx context.Context) {
 	}
 	h.mu.Unlock()
 	h.setBackground(client, runs)
+	h.server.mirror.sync(ctx, tasks)
 }
 
 func (h *cloudHub) knownTitle(runID string) string {
@@ -259,8 +268,11 @@ func (f *cloudFeed) dispatch(update posthogcloud.Update) {
 	for sub := range f.subs {
 		sub.offer(update)
 	}
-	notification := f.noticeFor(update)
+	notification, moved := f.noticeFor(update)
 	f.mu.Unlock()
+	if moved {
+		go f.hub.server.mirror.touched(f.ctx, f.runID)
+	}
 	if update.Approvals {
 		f.hub.changes.Notify()
 	}
@@ -269,7 +281,7 @@ func (f *cloudFeed) dispatch(update posthogcloud.Update) {
 	}
 }
 
-func (f *cloudFeed) noticeFor(update posthogcloud.Update) *notify.Notification {
+func (f *cloudFeed) noticeFor(update posthogcloud.Update) (*notify.Notification, bool) {
 	status := f.lastStatus
 	if update.Run != nil {
 		status = update.Run.Status
@@ -277,11 +289,12 @@ func (f *cloudFeed) noticeFor(update posthogcloud.Update) *notify.Notification {
 	state := cmp.Or(update.State, f.lastState)
 	previousState, previousStatus, baseline := f.lastState, f.lastStatus, f.baseline
 	f.lastState, f.lastStatus = state, status
+	moved := state != previousState || status != previousStatus
 	if update.Reset {
 		f.baseline = true
 	}
 	if !baseline || update.Reset || update.Err != nil {
-		return nil
+		return nil, moved
 	}
 	var subtitle, body string
 	switch {
@@ -294,10 +307,10 @@ func (f *cloudFeed) noticeFor(update posthogcloud.Update) *notify.Notification {
 		subtitle = "Finished its turn"
 		body = f.follower.Last(chat.KindAssistant)
 	default:
-		return nil
+		return nil, moved
 	}
 	now := time.Now().UTC()
-	return &notify.Notification{
+	notification := &notify.Notification{
 		Kind:        notify.KindCreated,
 		ID:          postHogCloudApprovalPrefix + f.runID + ":" + strconv.FormatInt(now.UnixNano(), 36),
 		Title:       f.hub.title(f.runID),
@@ -307,6 +320,10 @@ func (f *cloudFeed) noticeFor(update posthogcloud.Update) *notify.Notification {
 		PostHogTask: f.taskID,
 		PostHogRun:  f.runID,
 	}
+	if mirrored, ok := f.hub.server.mirror.run(f.runID); ok {
+		notification.WorkspaceID, notification.SurfaceID = mirrored.WorkspaceID, mirrored.SurfaceID
+	}
+	return notification, moved
 }
 
 func (s *cloudSubscription) offer(update posthogcloud.Update) {
@@ -363,6 +380,9 @@ func approvalFor(feed *cloudFeed, run posthogcloud.Run, request posthogcloud.Pen
 		PostHogTask: feed.taskID,
 		PostHogRun:  feed.runID,
 	}
+	if mirrored, ok := feed.hub.server.mirror.run(feed.runID); ok {
+		approval.WorkspaceID, approval.SurfaceID = mirrored.WorkspaceID, mirrored.SurfaceID
+	}
 	for _, question := range request.Questions {
 		item := approvals.Question{Header: question.Header, Prompt: question.Question, MultiSelect: question.MultiSelect}
 		for _, option := range question.Options {
@@ -397,7 +417,7 @@ func (h *cloudHub) answer(ctx context.Context, id string, answer approvals.Answe
 	if err != nil {
 		return err
 	}
-	result, err := commandWithRetry(ctx, feed.client, feed.taskID, feed.runID, "permission_response", params)
+	result, err := feed.client.CommandWithRetry(ctx, feed.taskID, feed.runID, "permission_response", params)
 	var failure *posthogcloud.CommandError
 	if errors.As(err, &failure) && (failure.RunEnded() || failure.Code == "agent_error") {
 		return approvals.ErrNotPending
@@ -497,22 +517,6 @@ func optionByID(options []posthogcloud.PermissionOption, ids []string) string {
 	return ""
 }
 
-func commandWithRetry(ctx context.Context, client *posthogcloud.Client, taskID, runID, method string, params any) ([]byte, error) {
-	for {
-		result, err := client.Command(ctx, taskID, runID, method, params)
-		var failure *posthogcloud.CommandError
-		if err == nil || !errors.As(err, &failure) || !failure.Retryable() {
-			return result, err
-		}
-		wait := cmp.Or(failure.RetryAfter, postHogCloudCommandRetry)
-		select {
-		case <-ctx.Done():
-			return nil, err
-		case <-time.After(wait):
-		}
-	}
-}
-
 func (h *cloudHub) sendMessage(ctx context.Context, client *posthogcloud.Client, taskID, runID, text string) error {
 	run, err := client.Run(ctx, taskID, runID)
 	if err != nil {
@@ -529,7 +533,7 @@ func (h *cloudHub) sendMessage(ctx context.Context, client *posthogcloud.Client,
 	} else if status, state := h.live(runID); status == "in_progress" && state == posthogcloud.StateWorking {
 		params["steer"] = true
 	}
-	_, err = commandWithRetry(ctx, client, taskID, runID, "user_message", params)
+	_, err = client.CommandWithRetry(ctx, taskID, runID, "user_message", params)
 	var failure *posthogcloud.CommandError
 	if errors.As(err, &failure) && failure.RunEnded() {
 		return &requestError{Code: "posthog_cloud_run_ended", Message: "This run has ended and its sandbox is gone. Start a new run in PostHog."}
@@ -541,7 +545,7 @@ func (h *cloudHub) sendMessage(ctx context.Context, client *posthogcloud.Client,
 }
 
 func (h *cloudHub) stopTurn(ctx context.Context, client *posthogcloud.Client, taskID, runID string) error {
-	_, err := commandWithRetry(ctx, client, taskID, runID, "cancel", map[string]any{})
+	_, err := client.CommandWithRetry(ctx, taskID, runID, "cancel", map[string]any{})
 	var failure *posthogcloud.CommandError
 	if errors.As(err, &failure) && failure.RunEnded() {
 		return nil
@@ -579,7 +583,7 @@ func (f *cloudFeed) answerCredential(request posthogcloud.CredentialRequest) {
 		return
 	}
 	params := map[string]any{"requestId": request.RequestID, "credential": "claude_subscription_token", "token": config.ClaudeToken}
-	if _, err := commandWithRetry(ctx, f.client, f.taskID, f.runID, "credential_response", params); err != nil {
+	if _, err := f.client.CommandWithRetry(ctx, f.taskID, f.runID, "credential_response", params); err != nil {
 		f.hub.server.logger.Warn("could not hand the Claude token to a PostHog Cloud run", "run", f.runID, "error", err)
 		return
 	}

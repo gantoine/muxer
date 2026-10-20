@@ -37,6 +37,10 @@ type chatWatch struct {
 }
 
 func (s *session) watchChat(ctx context.Context, current *attachment) {
+	if runID, mirrored, ok := s.server.mirror.runForSurface(current.surfaceID); ok {
+		s.followMirroredChat(ctx, current, mirrored.TaskID, runID)
+		return
+	}
 	var watch chatWatch
 	announced := false
 	for {

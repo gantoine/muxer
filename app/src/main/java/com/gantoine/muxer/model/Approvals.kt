@@ -54,6 +54,7 @@ object Approvals {
     }
 
     fun secondsLeft(approval: Approval, now: Instant): Long? {
+        if (approval.posthogRunId != null) return null
         val created = parseInstant(approval.createdAt) ?: return null
         return (ANSWER_WINDOW_SECONDS - (now.epochSecond - created.epochSecond)).coerceAtLeast(0)
     }

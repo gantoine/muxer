@@ -2,12 +2,14 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gantoine/muxer/relay/internal/chat"
+	"github.com/gantoine/muxer/relay/internal/cmux"
 	"github.com/gantoine/muxer/relay/internal/posthogcloud"
 )
 
@@ -250,4 +252,113 @@ func (s *session) sendPostHogCloudChat(runID string, entries []chat.Entry, reset
 		"reset":   reset,
 		"entries": entries,
 	})
+}
+
+func (s *session) mirroredRun(current *attachment) (runID, taskID string, ok bool) {
+	if current == nil {
+		return "", "", false
+	}
+	runID, mirrored, ok := s.server.mirror.runForSurface(current.surfaceID)
+	return runID, mirrored.TaskID, ok
+}
+
+func (s *session) mirroredRequest(kind string, current *attachment) bool {
+	switch kind {
+	case "paste", "send_agent_message", "send_images":
+		_, _, ok := s.mirroredRun(current)
+		return ok
+	}
+	return false
+}
+
+func (s *session) actOnMirroredRun(kind string, raw json.RawMessage, current *attachment) (any, bool, error) {
+	runID, taskID, ok := s.mirroredRun(current)
+	if !ok {
+		return nil, false, nil
+	}
+	var request struct {
+		Text   string `json:"text"`
+		Submit bool   `json:"submit"`
+		Key    string `json:"key"`
+	}
+	_ = json.Unmarshal(raw, &request)
+	client, _, connected, err := s.server.postHogCloudClient()
+	if err == nil && !connected {
+		err = errPostHogCloudNotConnected
+	}
+	ctx, cancel := context.WithTimeout(s.ctx, postHogCloudActionTimeout)
+	defer cancel()
+	switch kind {
+	case "key":
+		if request.Key != "escape" && request.Key != "ctrl-c" {
+			return nil, false, nil
+		}
+		if err != nil {
+			return nil, true, err
+		}
+		return nil, true, s.server.cloud.stopTurn(ctx, client, taskID, runID)
+	case "paste":
+		if !request.Submit {
+			return nil, false, nil
+		}
+		if err != nil {
+			return nil, true, err
+		}
+		return nil, true, s.sendToMirroredRun(ctx, client, taskID, runID, request.Text)
+	case "send_agent_message":
+		if err != nil {
+			return nil, true, err
+		}
+		if err := s.sendToMirroredRun(ctx, client, taskID, runID, request.Text); err != nil {
+			return nil, true, err
+		}
+		now := time.Now()
+		return cmux.AgentMessage{ID: "phc-" + strconv.FormatInt(now.UnixNano(), 36), Body: strings.TrimSpace(request.Text), State: "delivered", CreatedAt: float64(now.UnixMilli()) / 1000}, true, nil
+	case "send_images":
+		return nil, true, &requestError{Code: "unsupported", Message: "Images can't be sent to PostHog Cloud runs yet."}
+	}
+	return nil, false, nil
+}
+
+func (s *session) sendToMirroredRun(ctx context.Context, client *posthogcloud.Client, taskID, runID, text string) error {
+	if err := validText("message", text); err != nil || strings.TrimSpace(text) == "" {
+		return invalid("Write a message to send.")
+	}
+	return s.server.cloud.sendMessage(ctx, client, taskID, runID, strings.TrimSpace(text))
+}
+
+func (s *session) followMirroredChat(ctx context.Context, current *attachment, taskID, runID string) {
+	client, _, ok, err := s.server.postHogCloudClient()
+	if err != nil || !ok {
+		s.sendChatSession(current, "")
+		return
+	}
+	sub := s.server.cloud.subscribe(client, taskID, runID)
+	defer s.server.cloud.unsubscribe(runID, sub)
+	s.sendChatSession(current, runID)
+	for {
+		var update posthogcloud.Update
+		select {
+		case <-ctx.Done():
+			return
+		case update = <-sub.updates:
+		case <-sub.wake:
+		}
+		if sub.stale.Swap(false) {
+			for len(sub.updates) > 0 {
+				<-sub.updates
+			}
+			update = snapshotUpdate(sub.feed.current())
+		}
+		switch {
+		case update.Reset:
+			entries := update.Entries
+			if len(entries) > maxInitialEntries {
+				entries = entries[len(entries)-maxInitialEntries:]
+			}
+			s.sendChat(current, runID, entries, true)
+		case len(update.Entries) > 0:
+			s.sendChat(current, runID, update.Entries, false)
+		}
+	}
 }

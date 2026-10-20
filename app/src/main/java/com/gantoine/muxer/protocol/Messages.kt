@@ -199,7 +199,7 @@ data class Approval(
     val posthogTaskId: String? = null,
     val posthogRunId: String? = null,
 ) {
-    val isPostHogCloud: Boolean get() = posthogTaskId != null && posthogRunId != null
+    val opensPostHogCloudRun: Boolean get() = posthogTaskId != null && posthogRunId != null && surfaceId.isBlank()
     val isPermission: Boolean get() = kind == KIND_PERMISSION
     val isQuestion: Boolean get() = kind == KIND_QUESTION
     val isPlan: Boolean get() = kind == KIND_PLAN

@@ -67,6 +67,8 @@ type fakeCmux struct {
 	vaultCalls      []string
 	commands        []string
 	submitted       bool
+	growWorkspaces  bool
+	closed          []string
 	performed       []string
 	performErr      error
 	performResults  map[string]string
@@ -274,7 +276,16 @@ func (f *fakeCmux) Identify(context.Context) (cmux.Identity, error) {
 func (f *fakeCmux) Workspaces(context.Context) (cmux.WorkspaceList, error) {
 	f.mu.Lock()
 	f.workspaceReads++
-	override := f.workspaceList
+	var override *cmux.WorkspaceList
+	if f.workspaceList != nil {
+		copied := *f.workspaceList
+		copied.Workspaces = slices.Clone(copied.Workspaces)
+		for index := range copied.Workspaces {
+			copied.Workspaces[index].Terminals = slices.Clone(copied.Workspaces[index].Terminals)
+		}
+		copied.Groups = slices.Clone(copied.Groups)
+		override = &copied
+	}
 	f.mu.Unlock()
 	if override != nil {
 		return *override, nil
@@ -287,7 +298,10 @@ func (f *fakeCmux) Workspaces(context.Context) (cmux.WorkspaceList, error) {
 
 func (f *fakeCmux) Replay(_ context.Context, workspaceID, surfaceID string) (cmux.Replay, error) {
 	f.wakeTerminal(workspaceID, surfaceID)
-	if surfaceID != "t1" {
+	f.mu.Lock()
+	grown := f.growWorkspaces && strings.HasPrefix(surfaceID, "ct")
+	f.mu.Unlock()
+	if surfaceID != "t1" && !grown {
 		return cmux.Replay{}, &cmux.RPCError{Code: "not_found", Message: "no such terminal"}
 	}
 	return cmux.Replay{WorkspaceID: workspaceID, SurfaceID: surfaceID, RenderGrid: &cmux.RenderGrid{
@@ -363,9 +377,23 @@ func (f *fakeCmux) CreateWorkspaceWithEnv(_ context.Context, title, cwd string, 
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.envWorkspaces = append(f.envWorkspaces, envWorkspace{title: title, cwd: cwd, env: env})
-	return cmux.CreatedWorkspace{WorkspaceID: "w2", SurfaceID: "t2"}, nil
+	if !f.growWorkspaces || f.workspaceList == nil {
+		return cmux.CreatedWorkspace{WorkspaceID: "w2", SurfaceID: "t2"}, nil
+	}
+	created := cmux.CreatedWorkspace{WorkspaceID: fmt.Sprintf("cw%d", len(f.envWorkspaces)), SurfaceID: fmt.Sprintf("ct%d", len(f.envWorkspaces))}
+	f.workspaceList.Workspaces = append(f.workspaceList.Workspaces, cmux.Workspace{ID: created.WorkspaceID, Title: title, Terminals: []cmux.Terminal{{ID: created.SurfaceID, IsReady: true}}})
+	return created, nil
 }
-func (f *fakeCmux) CloseWorkspace(context.Context, string, bool) error    { return nil }
+
+func (f *fakeCmux) CloseWorkspace(_ context.Context, workspaceID string, _ bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closed = append(f.closed, workspaceID)
+	if f.growWorkspaces && f.workspaceList != nil {
+		f.workspaceList.Workspaces = slices.DeleteFunc(f.workspaceList.Workspaces, func(workspace cmux.Workspace) bool { return workspace.ID == workspaceID })
+	}
+	return nil
+}
 func (f *fakeCmux) RenameWorkspace(context.Context, string, string) error { return nil }
 func (f *fakeCmux) CreateTerminal(context.Context, string) (string, error) {
 	return "t3", nil

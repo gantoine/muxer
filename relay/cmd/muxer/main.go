@@ -44,6 +44,7 @@ Usage:
                                                 Show your PostHog Tasks cloud runs in the app
   muxer posthog-cloud disconnect                Forget the PostHog API key
   muxer posthog-cloud status                    Show the connected PostHog account
+  muxer posthog-cloud attach --task ID --run ID  Show a cloud run in this terminal (the relay opens these)
   muxer posthog-cloud claude-token [--clear]    Save a ` + "`claude setup-token`" + ` token for runs on your Claude plan
   muxer serve [--listen ADDR] [--name NAME]     Run the relay in the foreground
   muxer version
@@ -139,7 +140,7 @@ func runServe(args []string) error {
 	agentFinder := host.NewAgentFinder(host.LoginShell(), server.TaskAgents...)
 	go agentFinder.Installed(ctx)
 
-	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, InstalledAgents: agentFinder.Installed, LoginShell: host.LoginShell(), Tailnet: tailnet.CLI{}, Listeners: host.Listeners, ListeningProcesses: host.ListeningProcesses, ParentProcesses: host.ParentProcesses, ExposedPorts: paths.exposedPorts, RelayPort: relayPort(listen), PostHogCloudConfig: paths.postHogCloud}, logger)
+	relay := server.New(client, store, hub, server.Options{MacName: macName, FallbackMacName: defaultMacName(), RelayVersion: version, Approvals: approvalTracker, Agents: agentTracker, HostUsage: host.Sample, InstalledAgents: agentFinder.Installed, LoginShell: host.LoginShell(), Tailnet: tailnet.CLI{}, Listeners: host.Listeners, ListeningProcesses: host.ListeningProcesses, ParentProcesses: host.ParentProcesses, ExposedPorts: paths.exposedPorts, RelayPort: relayPort(listen), PostHogCloudConfig: paths.postHogCloud, PostHogCloudMirror: paths.cloudMirror, PostHogCloudExecutable: executable(), PostHogCloudEnv: stateDirEnv()}, logger)
 	categories := slices.Concat([]string{"notification"}, agents.EventCategories, server.WorkspaceEventCategories)
 	go events.NewStream(client, logger, cmux.EventFilter{Categories: categories}, hub, approvalTracker, agentTracker, relay).Run(ctx)
 	httpServer := &http.Server{
@@ -167,6 +168,21 @@ func runServe(args []string) error {
 	default:
 		return nil
 	}
+}
+
+func executable() string {
+	path, err := os.Executable()
+	if err != nil {
+		return "muxer"
+	}
+	return path
+}
+
+func stateDirEnv() map[string]string {
+	if dir := os.Getenv("MUXER_STATE_DIR"); dir != "" {
+		return map[string]string{"MUXER_STATE_DIR": dir}
+	}
+	return nil
 }
 
 func runPair(args []string) error {

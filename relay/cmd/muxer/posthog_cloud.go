@@ -23,7 +23,7 @@ const (
 
 func runPostHogCloud(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: muxer posthog-cloud connect|disconnect|status|claude-token")
+		return errors.New("usage: muxer posthog-cloud connect|disconnect|status|claude-token|attach")
 	}
 	paths, err := statePaths()
 	if err != nil {
@@ -54,6 +54,8 @@ func runPostHogCloud(args []string) error {
 		return nil
 	case "claude-token":
 		return saveClaudeToken(paths, args[1:])
+	case "attach":
+		return attachPostHogCloudRun(paths, args[1:])
 	}
 	return fmt.Errorf("unknown posthog-cloud command %q", args[0])
 }

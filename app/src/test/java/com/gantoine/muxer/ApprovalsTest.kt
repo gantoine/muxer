@@ -137,5 +137,6 @@ class ApprovalsTest {
         val created = permission.copy(createdAt = "2026-10-15T16:08:42Z")
         assertEquals(100L, Approvals.secondsLeft(created, Instant.parse("2026-10-15T16:09:02Z")))
         assertEquals(0L, Approvals.secondsLeft(created, Instant.parse("2026-10-15T16:20:00Z")))
+        assertNull(Approvals.secondsLeft(created.copy(posthogTaskId = "t1", posthogRunId = "r1"), Instant.parse("2026-10-15T16:20:00Z")))
     }
 }

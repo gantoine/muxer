@@ -124,9 +124,25 @@ func (c *Client) Command(ctx context.Context, taskID, runID, method string, para
 	return reply.Result, nil
 }
 
-func (c *Client) CancelTurn(ctx context.Context, taskID, runID string) error {
-	_, err := c.Command(ctx, taskID, runID, "cancel", map[string]any{})
-	return err
+const defaultCommandRetry = 2 * time.Second
+
+func (c *Client) CommandWithRetry(ctx context.Context, taskID, runID, method string, params any) (json.RawMessage, error) {
+	for {
+		result, err := c.Command(ctx, taskID, runID, method, params)
+		var failure *CommandError
+		if err == nil || !errors.As(err, &failure) || !failure.Retryable() {
+			return result, err
+		}
+		wait := failure.RetryAfter
+		if wait <= 0 {
+			wait = defaultCommandRetry
+		}
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-time.After(wait):
+		}
+	}
 }
 
 func (c *Client) ResumeInCloud(ctx context.Context, taskID, runID string) (Run, error) {

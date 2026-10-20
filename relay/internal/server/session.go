@@ -218,7 +218,7 @@ func (s *session) handle(raw json.RawMessage) {
 		return
 	}
 	current := s.current()
-	if !parallelRequests[message.Type] {
+	if !parallelRequests[message.Type] && !s.mirroredRequest(message.Type, current) {
 		s.answer(message, raw, current)
 		return
 	}
@@ -264,6 +264,9 @@ func (s *session) reply(id string, data any, err error) {
 }
 
 func (s *session) dispatch(kind string, raw json.RawMessage, current *attachment) (any, error) {
+	if data, handled, err := s.actOnMirroredRun(kind, raw, current); handled {
+		return data, err
+	}
 	ctx, cancel := context.WithTimeout(s.ctx, callTimeout)
 	defer cancel()
 	switch kind {

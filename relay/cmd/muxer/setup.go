@@ -37,6 +37,7 @@ type paths struct {
 	plist        string
 	log          string
 	postHogCloud string
+	cloudMirror  string
 }
 
 func statePaths() (paths, error) {
@@ -57,6 +58,7 @@ func statePaths() (paths, error) {
 		devices:      filepath.Join(dir, "devices.json"),
 		exposedPorts: filepath.Join(dir, "exposed-ports.json"),
 		postHogCloud: filepath.Join(dir, "posthog-cloud.json"),
+		cloudMirror:  filepath.Join(dir, "posthog-cloud-workspaces.json"),
 		admin:        admin,
 		plist:        filepath.Join(home, "Library", "LaunchAgents", launchdLabel+".plist"),
 		log:          filepath.Join(home, "Library", "Logs", "muxer.log"),

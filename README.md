@@ -155,7 +155,9 @@ On the phone, open a computer's settings and tap **Automations** to see its rule
 
 ## PostHog Cloud runs
 
-If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the relay can follow your runs for you. It keeps watching the runs you have in progress, and the phone tells you when one needs your approval or finishes its turn. Open the alert to see the run as a chat: its messages, tool calls and status, with buttons for its pull request and for the task in PostHog. From there you can reply (a message sent while the agent works steers it), stop the agent, and answer its approvals, questions and plans. A reply to a finished run reopens it.
+If you run coding agents in the cloud with [PostHog Tasks](https://posthog.com/docs), the relay can bring your runs into cmux. Each run that is in progress, or finished in the last 24 hours, gets its own workspace, grouped by repository like the rest of your work. The workspace shows the run as it goes and its status lane follows the agent: working, needs attention when it asks for approval, review when it is waiting for your reply, and done. Type in it to reply, or use `/approve`, `/always`, `/deny` and `/stop`.
+
+On the phone these workspaces open as a chat, like a local agent: you can reply (a message sent while the agent works steers it), stop it with Esc, and answer its approvals, questions and plans. A reply to a finished run reopens it. When a run asks for approval, finishes its turn or fails, the phone tells you. The relay closes the workspaces it opened a day after their run ends, unless you pinned or renamed them, and it doesn't reopen a workspace you closed.
 
 Create a personal API key in PostHog under **Settings › Personal API keys** with the `task:read`, `task:write` and `user:read` scopes, then connect the relay to it:
 

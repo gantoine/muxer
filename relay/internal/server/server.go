@@ -131,29 +131,32 @@ type Agents interface {
 }
 
 type Options struct {
-	MacName              string
-	FallbackMacName      string
-	RelayVersion         string
-	PollInterval         Intervals
-	ClaudeConfigDir      string
-	ClaudeSession        func(surfaceID string) (claude.SessionRef, bool)
-	CodexHome            string
-	PiAgentDir           string
-	Approvals            Approvals
-	Agents               Agents
-	HostUsage            func(context.Context) (host.Usage, error)
-	InstalledAgents      func(context.Context) ([]string, error)
-	LoginShell           string
-	Tailnet              Tailnet
-	Listeners            func(ctx context.Context, port int) ([]netip.Addr, error)
-	ListeningProcesses   func(ctx context.Context) (map[int][]int, error)
-	ParentProcesses      func(ctx context.Context) (map[int]int, error)
-	ExposedPorts         string
-	AutomationsFile      string
-	RelayPort            int
-	PostHogCloudConfig   string
-	PostHogCloudHTTP     *http.Client
-	PostHogCloudFollower posthogcloud.FollowerOptions
+	MacName                string
+	FallbackMacName        string
+	RelayVersion           string
+	PollInterval           Intervals
+	ClaudeConfigDir        string
+	ClaudeSession          func(surfaceID string) (claude.SessionRef, bool)
+	CodexHome              string
+	PiAgentDir             string
+	Approvals              Approvals
+	Agents                 Agents
+	HostUsage              func(context.Context) (host.Usage, error)
+	InstalledAgents        func(context.Context) ([]string, error)
+	LoginShell             string
+	Tailnet                Tailnet
+	Listeners              func(ctx context.Context, port int) ([]netip.Addr, error)
+	ListeningProcesses     func(ctx context.Context) (map[int][]int, error)
+	ParentProcesses        func(ctx context.Context) (map[int]int, error)
+	ExposedPorts           string
+	AutomationsFile        string
+	RelayPort              int
+	PostHogCloudConfig     string
+	PostHogCloudHTTP       *http.Client
+	PostHogCloudFollower   posthogcloud.FollowerOptions
+	PostHogCloudMirror     string
+	PostHogCloudExecutable string
+	PostHogCloudEnv        map[string]string
 }
 
 type Server struct {
@@ -179,6 +182,7 @@ type Server struct {
 	files      *files.Index
 	exposures  *portExposures
 	cloud      *cloudHub
+	mirror     *cloudMirror
 }
 
 func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, logger *slog.Logger) *Server {
@@ -209,6 +213,7 @@ func New(cmuxAPI Cmux, store *devices.Store, hub *notify.Hub, options Options, l
 	server.workspaces = newFeed(options.PollInterval.Workspaces, server.pollWorkspaces(&gitInfo{}))
 	server.keepAwake = newFeed(options.PollInterval.KeepAwake, server.pollKeepAwake)
 	server.cloud = newCloudHub(server)
+	server.mirror = newCloudMirror(server, options.PostHogCloudMirror)
 	go server.cloud.run(ctx)
 	return server
 }

@@ -44,6 +44,7 @@ func (s *Server) pollWorkspaces(git *gitInfo) func(ctx context.Context) ([]byte,
 		git.apply(list.Workspaces)
 		s.organizing.refresh(ctx, s, list)
 		s.organizing.apply(&list)
+		s.mirror.decorate(&list)
 		encoded, err := json.Marshal(map[string]any{"type": "workspaces", "workspaces": list.Workspaces, "groups": list.Groups})
 		return encoded, err == nil
 	}
