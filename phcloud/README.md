@@ -18,10 +18,12 @@ phcloud talks to PostHog and cmux directly. It needs no server, browser page or 
 ## Install
 
 ```sh
-go install github.com/gantoine/muxer/phcloud/cmd/phcloud@latest
+brew install gantoine/tap/phcloud
 phcloud connect      # paste a personal API key
 phcloud dock install # pin the manager in the cmux Dock
 ```
+
+Or build it with `go install github.com/gantoine/muxer/phcloud/cmd/phcloud@latest`.
 
 The personal API key needs the `task:read`, `task:write`, `user:read` and `integration:read` scopes. Pass `--host https://eu.posthog.com` to `connect` on the EU cloud.
 

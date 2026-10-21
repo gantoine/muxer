@@ -35,7 +35,9 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: relay/go.mod
-          cache-dependency-path: relay/go.sum
+          cache-dependency-path: |
+            relay/go.sum
+            phcloud/go.sum
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
@@ -45,6 +47,7 @@ jobs:
       - name: Test
         run: |
           (cd relay && go test ./...)
+          (cd phcloud && go test ./...)
           ./gradlew :app:testDebugUnitTest
 
       - name: Build relay
@@ -57,6 +60,18 @@ jobs:
               -o dist/muxer ./cmd/muxer
             tar -C dist -czf "dist/muxer-${VERSION}-darwin-${arch}.tar.gz" muxer
             rm dist/muxer
+          done
+
+      - name: Build phcloud
+        working-directory: phcloud
+        run: |
+          mkdir -p dist
+          for arch in arm64 amd64; do
+            GOOS=darwin GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=${VERSION}" \
+              -o dist/phcloud ./cmd/phcloud
+            tar -C dist -czf "../relay/dist/phcloud-${VERSION}-darwin-${arch}.tar.gz" phcloud
+            rm dist/phcloud
           done
 
       - name: Build signed APK
@@ -126,22 +141,21 @@ jobs:
           git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/gantoine/homebrew-tap.git" "$RUNNER_TEMP/tap"
           bot_id=$(GH_TOKEN="$TAP_TOKEN" gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)
 
-          checksum() { awk -v file="muxer-${VERSION}-darwin-$1.tar.gz" '$2 == file { print $1 }' relay/dist/SHA256SUMS; }
-          arm64_sha=$(checksum arm64)
-          amd64_sha=$(checksum amd64)
+          checksum() { awk -v file="$1-${VERSION}-darwin-$2.tar.gz" '$2 == file { print $1 }' relay/dist/SHA256SUMS; }
           mkdir -p "$RUNNER_TEMP/tap/Formula"
-          packaging/homebrew/render-formula.sh "$VERSION" "$arm64_sha" "$amd64_sha" > "$RUNNER_TEMP/tap/Formula/muxer.rb"
+          packaging/homebrew/render-formula.sh "$VERSION" "$(checksum muxer arm64)" "$(checksum muxer amd64)" > "$RUNNER_TEMP/tap/Formula/muxer.rb"
+          packaging/homebrew/render-phcloud-formula.sh "$VERSION" "$(checksum phcloud arm64)" "$(checksum phcloud amd64)" > "$RUNNER_TEMP/tap/Formula/phcloud.rb"
 
           cd "$RUNNER_TEMP/tap"
           git config user.name "${APP_SLUG}[bot]"
           git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
           git rm -q --ignore-unmatch Formula/cmux-relay.rb
           echo '{ "cmux-relay": "muxer" }' > formula_renames.json
-          git add Formula/muxer.rb formula_renames.json
+          git add Formula/muxer.rb Formula/phcloud.rb formula_renames.json
           if git diff --cached --quiet; then
-            echo "The formula is already at ${VERSION}."
+            echo "The formulas are already at ${VERSION}."
           else
-            git commit -m "muxer ${VERSION}"
+            git commit -m "muxer and phcloud ${VERSION}"
             git push origin HEAD:main
           fi
 
