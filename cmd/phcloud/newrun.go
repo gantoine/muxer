@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
@@ -65,7 +66,7 @@ func (f *newRunForm) open(m *manager) tea.Cmd {
 	f.prompt = textarea.New()
 	f.prompt.Placeholder = "What should the agent do?"
 	f.prompt.ShowLineNumbers = false
-	f.prompt.SetHeight(5)
+	f.prompt.SetHeight(4)
 	f.prompt.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j"))
 	f.resize(m.width)
 	f.loading = true
@@ -73,8 +74,9 @@ func (f *newRunForm) open(m *manager) tea.Cmd {
 }
 
 func (f *newRunForm) resize(width int) {
-	f.repository.Width = max(10, width-4)
-	f.prompt.SetWidth(max(10, width-2))
+	inner := contentWidth(width)
+	f.repository.Width = max(8, inner-3)
+	f.prompt.SetWidth(inner)
 }
 
 func (m *manager) findRepositories(query string) tea.Cmd {
@@ -272,54 +274,84 @@ func startedTask(task posthogcloud.Task, run posthogcloud.Run, request posthogcl
 }
 
 func (f *newRunForm) view(m *manager) string {
+	width := contentWidth(m.width)
+	f.styleInputs()
 	var b strings.Builder
-	b.WriteString(boldStyle.Render("New cloud run") + "\n\n")
-	label := func(field int, text string) string {
-		if f.field == field {
-			return accentStyle.Render("› " + text)
-		}
-		return dimStyle.Render("  " + text)
-	}
-	b.WriteString(label(fieldRepository, "Repository") + "\n  " + f.repository.View() + "\n")
+	b.WriteString(titleStyle.Render("New cloud run") + "\n\n")
+
+	b.WriteString(label("Repository", f.field == fieldRepository) + "\n" + f.repository.View() + "\n")
 	if f.field == fieldRepository && f.chosen == nil {
 		switch {
-		case f.loading:
-			b.WriteString(dimStyle.Render("  searching…") + "\n")
+		case f.loading && len(f.repositories) == 0:
+			b.WriteString(dimStyle.Render("  Searching…") + "\n")
 		case len(f.repositories) == 0:
-			b.WriteString(dimStyle.Render("  no repositories match") + "\n")
+			b.WriteString(dimStyle.Render("  No repository matches") + "\n")
 		}
 		for i, repository := range f.suggestions() {
+			name := truncateWidth(repository.Name, width-2)
 			if i == f.pick {
-				b.WriteString("  " + selectedStyle.Render(repository.Name) + "\n")
+				b.WriteString(accentStyle.Render("▸ ") + boldStyle.Render(name) + "\n")
 			} else {
-				b.WriteString("  " + repository.Name + "\n")
+				b.WriteString("  " + dimStyle.Render(name) + "\n")
 			}
 		}
 	}
-	b.WriteString("\n" + label(fieldAgent, "Agent") + "  " + choice(f.agent == posthogcloud.AgentClaude, "Claude") + " " + choice(f.agent == posthogcloud.AgentCodex, "Codex") + "\n")
-	if f.planAvailable() {
-		plan := choice(!f.claudePlan, "PostHog pays") + " " + choice(f.claudePlan, "My Claude plan")
-		if m.config.ClaudeToken == "" && f.claudePlan {
-			plan += " " + warnStyle.Render("(no token saved)")
-		}
-		b.WriteString(label(fieldPlan, "Billing") + "  " + plan + "\n")
+
+	agent := 0
+	if f.agent == posthogcloud.AgentCodex {
+		agent = 1
 	}
-	b.WriteString("\n" + label(fieldPrompt, "Prompt") + "\n" + f.prompt.View() + "\n\n")
+	b.WriteString("\n" + label("Agent", f.field == fieldAgent) + "\n" + pills([]string{"Claude", "Codex"}, agent, f.field == fieldAgent, width) + "\n")
+	if f.planAvailable() {
+		plan := 0
+		if f.claudePlan {
+			plan = 1
+		}
+		b.WriteString("\n" + label("Claude billing", f.field == fieldPlan) + "\n" + pills([]string{"PostHog", "My plan"}, plan, f.field == fieldPlan, width) + "\n")
+		if f.claudePlan && m.config.ClaudeToken == "" {
+			b.WriteString(warnStyle.Render(wrap("No Claude token saved yet. Press esc, then T.", width)) + "\n")
+		}
+	}
+
+	b.WriteString("\n" + label("Prompt", f.field == fieldPrompt) + "\n" + f.prompt.View() + "\n")
+
+	keys := []keyHint{{"↵", "next"}, {"tab", "move"}, {"esc", "cancel"}}
+	switch f.field {
+	case fieldRepository:
+		keys = []keyHint{{"↵", "pick"}, {"↑↓", "choose"}, {"esc", "cancel"}}
+	case fieldAgent, fieldPlan:
+		keys = []keyHint{{"←→", "change"}, {"↵", "next"}, {"esc", "cancel"}}
+	case fieldPrompt:
+		keys = []keyHint{{"↵", "start"}, {"⌥↵", "new line"}, {"esc", "cancel"}}
+	}
+	footer := hints(keys, width)
 	switch {
 	case f.starting:
-		b.WriteString(warnStyle.Render("Starting…") + "\n")
+		footer = warnStyle.Render("Starting the run…") + "\n\n" + footer
 	case f.failure != "":
-		b.WriteString(alertStyle.Render(f.failure) + "\n")
+		footer = alertStyle.Render(wrap(f.failure, width)) + "\n\n" + footer
 	}
-	b.WriteString(dimStyle.Render(wrapKeys([]string{"tab next", "enter start", "alt+enter newline", "esc cancel"}, max(20, m.width))))
-	return b.String()
+	return frame(m.width, m.height, b.String(), footer)
 }
 
-func choice(on bool, text string) string {
-	if on {
-		return accentStyle.Render("(•) " + text)
+func (f *newRunForm) styleInputs() {
+	bar := dimStyle
+	if f.field == fieldRepository {
+		bar = barStyle
 	}
-	return dimStyle.Render("( ) " + text)
+	f.repository.PromptStyle = bar
+	f.repository.Prompt = "┃ "
+	f.repository.PlaceholderStyle = dimStyle
+	f.repository.TextStyle = lipgloss.NewStyle()
+	f.prompt.Prompt = "┃ "
+	f.prompt.FocusedStyle.Prompt = barStyle
+	f.prompt.BlurredStyle.Prompt = dimStyle
+	f.prompt.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	f.prompt.BlurredStyle.CursorLine = lipgloss.NewStyle()
+	f.prompt.FocusedStyle.Placeholder = dimStyle
+	f.prompt.BlurredStyle.Placeholder = dimStyle
+	f.prompt.FocusedStyle.Base = lipgloss.NewStyle()
+	f.prompt.BlurredStyle.Base = lipgloss.NewStyle()
 }
 
 func startRunFromCLI(paths paths, args []string) error {

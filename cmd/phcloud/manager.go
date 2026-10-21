@@ -11,7 +11,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 
 	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
@@ -21,17 +20,6 @@ const (
 	refreshInterval = 10 * time.Second
 	actionTimeout   = time.Minute
 	liveThrottle    = 250 * time.Millisecond
-)
-
-var (
-	dimStyle      = lipgloss.NewStyle().Faint(true)
-	boldStyle     = lipgloss.NewStyle().Bold(true)
-	selectedStyle = lipgloss.NewStyle().Bold(true).Reverse(true)
-	accentStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	warnStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	alertStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	goodStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	boxStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("11")).Padding(0, 1)
 )
 
 type view int
@@ -83,7 +71,8 @@ type manager struct {
 	width   int
 	height  int
 
-	form newRunForm
+	form     newRunForm
+	showHelp bool
 }
 
 func runManager(paths paths) error {
@@ -251,6 +240,8 @@ func (m *manager) updateList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = viewSearch
 		m.search.SetValue(m.query)
 		return m, m.search.Focus()
+	case "?":
+		m.showHelp = !m.showHelp
 	case "r":
 		m.notice = "Refreshing…"
 		return m, m.load()
@@ -346,7 +337,11 @@ func (m *manager) webURL(task posthogcloud.Task) string {
 }
 
 func (m *manager) visible() []posthogcloud.Task {
-	if m.tab == tabAll {
+	return m.visibleIn(m.tab)
+}
+
+func (m *manager) visibleIn(shown tab) []posthogcloud.Task {
+	if shown == tabAll {
 		return m.tasks
 	}
 	var active []posthogcloud.Task
@@ -366,76 +361,85 @@ func (m *manager) View() string {
 	if m.view == viewNew {
 		return m.form.view(m)
 	}
+	width := contentWidth(m.width)
 	var b strings.Builder
-	b.WriteString(boldStyle.Render("Cloud runs") + "  " + m.tabs() + "\n")
+	b.WriteString(titleStyle.Render("Cloud runs") + "\n")
+	if !m.connected {
+		b.WriteString("\n" + wrap("Connect PostHog with a personal API key to see and start cloud runs.", width) + "\n\n")
+		b.WriteString(hints([]keyHint{{"c", "connect PostHog"}}, width) + "\n")
+		if m.failure != "" {
+			b.WriteString("\n" + alertStyle.Render(wrap(m.failure, width)) + "\n")
+		}
+		return frame(m.width, m.height, b.String(), hints([]keyHint{{"q", "quit"}}, width))
+	}
+	b.WriteString(m.tabs() + "\n")
 	if m.query != "" {
-		b.WriteString(dimStyle.Render("search: "+m.query+" (/ to change)") + "\n")
+		b.WriteString(dimStyle.Render(truncateWidth("matching “"+m.query+"”", width)) + "\n")
 	}
 	b.WriteString("\n")
+	visible := m.visible()
 	switch {
-	case !m.connected:
-		b.WriteString("PostHog isn't connected yet.\n\n" + accentStyle.Render("c") + " connect with a personal API key\n")
-		if m.failure != "" {
-			b.WriteString("\n" + alertStyle.Render(m.failure) + "\n")
-		}
-		return b.String()
 	case !m.loaded && m.failure == "":
 		b.WriteString(dimStyle.Render("Loading…") + "\n")
+	case m.loaded && len(visible) == 0 && m.tab == tabActive:
+		b.WriteString("Nothing running.\n" + dimStyle.Render(wrap("Press n to start a run, or tab to see past ones.", width)) + "\n")
+	case m.loaded && len(visible) == 0:
+		b.WriteString(dimStyle.Render("No runs found.") + "\n")
 	}
-	visible := m.visible()
-	if m.loaded && len(visible) == 0 {
-		empty := "No active runs. Press n to start one, tab to see all."
-		if m.tab == tabAll {
-			empty = "No runs found."
-		}
-		b.WriteString(dimStyle.Render(empty) + "\n")
-	}
-	rows := m.rows(visible)
-	b.WriteString(rows)
+	b.WriteString(m.rows(visible, width))
 	if m.cursor < len(visible) {
-		b.WriteString(m.detail(visible[m.cursor]))
+		b.WriteString(m.detail(visible[m.cursor], width))
 	}
-	b.WriteString("\n" + m.footer())
-	return b.String()
+	return frame(m.width, m.height, b.String(), m.footer(width))
 }
 
 func (m *manager) tabs() string {
+	active := len(m.visibleIn(tabActive))
 	names := []string{"Active", "All"}
-	var parts []string
+	if active > 0 {
+		names[0] = "Active " + strconv.Itoa(active)
+	}
+	parts := make([]string, len(names))
 	for i, name := range names {
 		if tab(i) == m.tab {
-			parts = append(parts, accentStyle.Render("["+name+"]"))
+			parts[i] = accentStyle.Bold(true).Underline(true).Render(name)
 		} else {
-			parts = append(parts, dimStyle.Render(name))
+			parts[i] = dimStyle.Render(name)
 		}
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, "   ")
 }
 
-func (m *manager) rows(visible []posthogcloud.Task) string {
-	budget := max(2, (m.height-10)/2)
+func (m *manager) rows(visible []posthogcloud.Task, width int) string {
+	chrome := 12
+	budget := max(1, (m.height-chrome)/3)
 	start := 0
 	if m.cursor >= budget {
 		start = m.cursor - budget + 1
 	}
 	var b strings.Builder
-	width := max(20, m.width-4)
+	text := width - 4
 	for i := start; i < len(visible) && i < start+budget; i++ {
 		task := visible[i]
-		glyph, label := m.status(task)
-		title := truncateWidth(taskTitle(task), width)
-		line := glyph + " " + title
+		glyph, state := m.status(task)
+		gutter, title := "  ", taskTitle(task)
 		if i == m.cursor {
-			line = glyph + " " + selectedStyle.Render(title)
+			gutter, title = barStyle.Render("▌ "), boldStyle.Render(truncateWidth(title, text))
+		} else {
+			title = truncateWidth(title, text)
 		}
-		meta := []string{label}
-		if task.Repository != "" {
-			meta = append(meta, task.Repository)
+		meta := []string{state}
+		if repository := repositoryGroup(task.Repository); task.Repository != "" {
+			meta = append(meta, repository)
 		}
 		if age := since(task.UpdatedAt); age != "" {
 			meta = append(meta, age)
 		}
-		b.WriteString(line + "\n  " + dimStyle.Render(truncateWidth(strings.Join(meta, " · "), width)) + "\n")
+		b.WriteString(gutter + glyph + " " + title + "\n")
+		b.WriteString(gutter + "  " + dimStyle.Render(truncateWidth(strings.Join(meta, " · "), text)) + "\n\n")
+	}
+	if hidden := len(visible) - start - budget; hidden > 0 {
+		b.WriteString(dimStyle.Render("  "+strconv.Itoa(hidden)+" more ↓") + "\n")
 	}
 	return b.String()
 }
@@ -450,9 +454,9 @@ func (m *manager) status(task posthogcloud.Task) (string, string) {
 		if !posthogcloud.Terminal(status) {
 			switch live.state {
 			case posthogcloud.StateWaiting:
-				return alertStyle.Render("●"), "needs you"
+				return alertStyle.Render("●"), alertStyle.Render("needs you")
 			case posthogcloud.StateIdle:
-				return accentStyle.Render("○"), "your turn"
+				return accentStyle.Render("○"), accentStyle.Render("your turn")
 			}
 		}
 	}
@@ -469,7 +473,7 @@ func (m *manager) status(task posthogcloud.Task) (string, string) {
 	return warnStyle.Render("◐"), "working"
 }
 
-func (m *manager) detail(task posthogcloud.Task) string {
+func (m *manager) detail(task posthogcloud.Task, width int) string {
 	if task.LatestRun == nil {
 		return ""
 	}
@@ -477,53 +481,33 @@ func (m *manager) detail(task posthogcloud.Task) string {
 	if !ok || len(live.pending) == 0 {
 		return ""
 	}
-	approval := live.pending[0]
-	text := boldStyle.Render("Needs you: ") + approvalSummary(approval) + "\n" +
-		accentStyle.Render("a") + " allow  " + accentStyle.Render("A") + " always  " + accentStyle.Render("d") + " deny  " + dimStyle.Render("enter to see more")
-	return "\n" + boxStyle.Width(max(20, m.width-2)).Render(text) + "\n"
+	inner := width - 4
+	text := alertStyle.Bold(true).Render("Needs you") + "\n" + wrap(approvalSummary(live.pending[0]), inner) + "\n\n" +
+		hints([]keyHint{{"a", "allow"}, {"A", "always"}, {"d", "deny"}}, inner)
+	return cardStyle.Width(width-2).Render(text) + "\n"
 }
 
-func (m *manager) footer() string {
-	var b strings.Builder
+func (m *manager) footer(width int) string {
+	var status string
 	switch {
 	case m.view == viewSearch:
-		b.WriteString(m.search.View() + "\n")
+		status = m.search.View()
 	case m.view == viewConfirmArchive:
-		b.WriteString(warnStyle.Render("Archive this run? y to confirm, any other key to cancel") + "\n")
+		status = warnStyle.Render(wrap("Archive this run? Press y to confirm.", width))
 	case m.failure != "":
-		b.WriteString(alertStyle.Render(truncateWidth(m.failure, max(20, m.width))) + "\n")
+		status = alertStyle.Render(wrap(m.failure, width))
 	case m.notice != "":
-		b.WriteString(goodStyle.Render(m.notice) + "\n")
+		status = goodStyle.Render(wrap(m.notice, width))
 	}
-	b.WriteString(dimStyle.Render(wrapKeys([]string{"enter open", "n new", "s stop", "x archive", "w web", "/ search", "tab", "r refresh"}, max(20, m.width))))
-	return b.String()
-}
-
-func wrapKeys(keys []string, width int) string {
-	var lines []string
-	line := ""
-	for _, key := range keys {
-		if line != "" && lipgloss.Width(line)+3+lipgloss.Width(key) > width {
-			lines = append(lines, line)
-			line = ""
-		}
-		if line != "" {
-			line += " · "
-		}
-		line += key
+	keys := []keyHint{{"↵", "open"}, {"n", "new"}, {"/", "search"}, {"?", "more"}}
+	if m.showHelp {
+		keys = []keyHint{{"↵", "open"}, {"n", "new"}, {"s", "stop"}, {"x", "archive"}, {"w", "web"}, {"/", "search"}, {"tab", "view"}, {"r", "refresh"}, {"T", "Claude token"}, {"?", "less"}}
 	}
-	return strings.Join(append(lines, line), "\n")
-}
-
-func truncateWidth(text string, width int) string {
-	if lipgloss.Width(text) <= width {
-		return text
+	help := hints(keys, width)
+	if status == "" {
+		return help
 	}
-	runes := []rune(text)
-	for len(runes) > 0 && lipgloss.Width(string(runes))+1 > width {
-		runes = runes[:len(runes)-1]
-	}
-	return string(runes) + "…"
+	return status + "\n\n" + help
 }
 
 func since(timestamp string) string {
