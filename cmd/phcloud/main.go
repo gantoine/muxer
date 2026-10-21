@@ -28,6 +28,7 @@ type paths struct {
 	dir        string
 	config     string
 	workspaces string
+	prefs      string
 }
 
 func statePaths() (paths, error) {
@@ -39,7 +40,7 @@ func statePaths() (paths, error) {
 		}
 		dir = filepath.Join(home, ".config", "phcloud")
 	}
-	return paths{dir: dir, config: filepath.Join(dir, "config.json"), workspaces: filepath.Join(dir, "workspaces.json")}, nil
+	return paths{dir: dir, config: filepath.Join(dir, "config.json"), workspaces: filepath.Join(dir, "workspaces.json"), prefs: filepath.Join(dir, "prefs.json")}, nil
 }
 
 func main() {

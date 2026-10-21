@@ -3,9 +3,11 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -24,10 +26,10 @@ const (
 )
 
 const (
-	fieldRepository = iota
+	fieldPrompt = iota
+	fieldRepository
 	fieldAgent
 	fieldPlan
-	fieldPrompt
 	fieldCount
 )
 
@@ -58,8 +60,29 @@ type newRunForm struct {
 	failure      string
 }
 
+type startPrefs struct {
+	Repository *posthogcloud.Repository `json:"repository,omitempty"`
+	Agent      string                   `json:"agent,omitempty"`
+	ClaudePlan bool                     `json:"claude_plan"`
+}
+
+func loadPrefs(path string) startPrefs {
+	var prefs startPrefs
+	if raw, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(raw, &prefs)
+	}
+	return prefs
+}
+
+func savePrefs(path string, prefs startPrefs) {
+	if raw, err := json.MarshalIndent(prefs, "", "  "); err == nil {
+		_ = os.WriteFile(path, append(raw, '\n'), 0o600)
+	}
+}
+
 func (f *newRunForm) open(m *manager) tea.Cmd {
-	*f = newRunForm{agent: posthogcloud.AgentClaude, claudePlan: m.config.ClaudeToken != ""}
+	prefs := loadPrefs(m.paths.prefs)
+	*f = newRunForm{agent: cmp.Or(prefs.Agent, posthogcloud.AgentClaude), claudePlan: prefs.ClaudePlan || (prefs.Agent == "" && m.config.ClaudeToken != "")}
 	f.repository = textinput.New()
 	f.repository.Placeholder = "owner/name"
 	f.repository.Prompt = ""
@@ -70,7 +93,25 @@ func (f *newRunForm) open(m *manager) tea.Cmd {
 	f.prompt.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j"))
 	f.resize(m.width)
 	f.loading = true
-	return tea.Batch(f.repository.Focus(), m.findRepositories(""))
+	f.field = fieldRepository
+	if prefs.Repository != nil {
+		f.chosen = prefs.Repository
+		f.repository.SetValue(prefs.Repository.Name)
+		f.field = fieldPrompt
+	}
+	return tea.Batch(f.focus(), m.findRepositories(""))
+}
+
+func (f *newRunForm) focus() tea.Cmd {
+	f.repository.Blur()
+	f.prompt.Blur()
+	switch f.field {
+	case fieldRepository:
+		return f.repository.Focus()
+	case fieldPrompt:
+		return f.prompt.Focus()
+	}
+	return nil
 }
 
 func (f *newRunForm) resize(width int) {
@@ -98,15 +139,7 @@ func (f *newRunForm) move(step int) tea.Cmd {
 	if f.field == fieldPlan && !f.planAvailable() {
 		f.field = (f.field + step + fieldCount) % fieldCount
 	}
-	f.repository.Blur()
-	f.prompt.Blur()
-	switch f.field {
-	case fieldRepository:
-		return f.repository.Focus()
-	case fieldPrompt:
-		return f.prompt.Focus()
-	}
-	return nil
+	return f.focus()
 }
 
 func (m *manager) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -135,6 +168,7 @@ func (m *manager) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			f.failure = msg.err.Error()
 			return m, nil
 		}
+		savePrefs(m.paths.prefs, startPrefs{Repository: f.chosen, Agent: f.agent, ClaudePlan: f.claudePlan})
 		m.view = viewList
 		m.tab, m.cursor = tabActive, 0
 		m.notice = "Started “" + taskTitle(msg.task) + "”."
@@ -244,7 +278,8 @@ func (m *manager) startFromForm() tea.Cmd {
 	switch {
 	case f.chosen == nil:
 		f.failure = "Pick a repository first."
-		return nil
+		f.field = fieldRepository
+		return f.focus()
 	case prompt == "":
 		f.failure = "Write a prompt first."
 		return nil
@@ -278,7 +313,51 @@ func (f *newRunForm) view(m *manager) string {
 	f.styleInputs()
 	var b strings.Builder
 	b.WriteString(titleStyle.Render("New cloud run") + "\n\n")
+	if f.field == fieldPrompt {
+		b.WriteString(f.summary(m, width) + "\n\n")
+		b.WriteString(f.prompt.View() + "\n")
+	} else {
+		b.WriteString(f.settings(m, width))
+		b.WriteString("\n" + label("Prompt", false) + "\n" + f.prompt.View() + "\n")
+	}
+	keys := []keyHint{{"↵", "start"}, {"⌥↵", "new line"}, {"tab", "change"}, {"esc", "cancel"}}
+	switch f.field {
+	case fieldRepository:
+		keys = []keyHint{{"↵", "pick"}, {"↑↓", "choose"}, {"tab", "next"}, {"esc", "cancel"}}
+	case fieldAgent, fieldPlan:
+		keys = []keyHint{{"←→", "change"}, {"↵", "next"}, {"esc", "cancel"}}
+	}
+	footer := hints(keys, width)
+	switch {
+	case f.starting:
+		footer = warnStyle.Render("Starting the run…") + "\n\n" + footer
+	case f.failure != "":
+		footer = alertStyle.Render(wrap(f.failure, width)) + "\n\n" + footer
+	}
+	return frame(m.width, m.height, b.String(), footer)
+}
 
+func (f *newRunForm) summary(m *manager, width int) string {
+	repository := warnStyle.Render("no repository")
+	if f.chosen != nil {
+		repository = f.chosen.Name
+	}
+	parts := []string{repository, map[string]string{posthogcloud.AgentClaude: "Claude", posthogcloud.AgentCodex: "Codex"}[f.agent]}
+	if f.planAvailable() {
+		billing := "PostHog pays"
+		if f.claudePlan {
+			billing = "my Claude plan"
+			if m.config.ClaudeToken == "" {
+				billing = warnStyle.Render("my Claude plan (no token)")
+			}
+		}
+		parts = append(parts, billing)
+	}
+	return dimStyle.Render(wrap(strings.Join(parts, " · "), width))
+}
+
+func (f *newRunForm) settings(m *manager, width int) string {
+	var b strings.Builder
 	b.WriteString(label("Repository", f.field == fieldRepository) + "\n" + f.repository.View() + "\n")
 	if f.field == fieldRepository && f.chosen == nil {
 		switch {
@@ -296,7 +375,6 @@ func (f *newRunForm) view(m *manager) string {
 			}
 		}
 	}
-
 	agent := 0
 	if f.agent == posthogcloud.AgentCodex {
 		agent = 1
@@ -312,26 +390,7 @@ func (f *newRunForm) view(m *manager) string {
 			b.WriteString(warnStyle.Render(wrap("No Claude token saved yet. Press esc, then T.", width)) + "\n")
 		}
 	}
-
-	b.WriteString("\n" + label("Prompt", f.field == fieldPrompt) + "\n" + f.prompt.View() + "\n")
-
-	keys := []keyHint{{"↵", "next"}, {"tab", "move"}, {"esc", "cancel"}}
-	switch f.field {
-	case fieldRepository:
-		keys = []keyHint{{"↵", "pick"}, {"↑↓", "choose"}, {"esc", "cancel"}}
-	case fieldAgent, fieldPlan:
-		keys = []keyHint{{"←→", "change"}, {"↵", "next"}, {"esc", "cancel"}}
-	case fieldPrompt:
-		keys = []keyHint{{"↵", "start"}, {"⌥↵", "new line"}, {"esc", "cancel"}}
-	}
-	footer := hints(keys, width)
-	switch {
-	case f.starting:
-		footer = warnStyle.Render("Starting the run…") + "\n\n" + footer
-	case f.failure != "":
-		footer = alertStyle.Render(wrap(f.failure, width)) + "\n\n" + footer
-	}
-	return frame(m.width, m.height, b.String(), footer)
+	return b.String()
 }
 
 func (f *newRunForm) styleInputs() {

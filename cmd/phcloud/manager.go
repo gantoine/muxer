@@ -11,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
@@ -412,34 +413,38 @@ func (m *manager) tabs() string {
 
 func (m *manager) rows(visible []posthogcloud.Task, width int) string {
 	chrome := 12
-	budget := max(1, (m.height-chrome)/3)
+	budget := max(3, m.height-chrome)
 	start := 0
-	if m.cursor >= budget {
-		start = m.cursor - budget + 1
+	if m.cursor >= budget-1 {
+		start = m.cursor - budget + 2
 	}
 	var b strings.Builder
-	text := width - 4
-	for i := start; i < len(visible) && i < start+budget; i++ {
+	used, next := 0, start
+	for i := start; i < len(visible) && used < budget; i++ {
+		next = i + 1
 		task := visible[i]
 		glyph, state := m.status(task)
-		gutter, title := "  ", taskTitle(task)
+		age := since(task.UpdatedAt)
+		room := width - 4 - lipgloss.Width(age) - 1
+		title := truncateWidth(taskTitle(task), room)
+		gutter := "  "
 		if i == m.cursor {
-			gutter, title = barStyle.Render("▌ "), boldStyle.Render(truncateWidth(title, text))
-		} else {
-			title = truncateWidth(title, text)
+			gutter, title = barStyle.Render("▌ "), boldStyle.Render(title)
 		}
-		meta := []string{state}
-		if repository := repositoryGroup(task.Repository); task.Repository != "" {
-			meta = append(meta, repository)
+		pad := max(1, width-2-2-lipgloss.Width(title)-lipgloss.Width(age))
+		b.WriteString(gutter + glyph + " " + title + strings.Repeat(" ", pad) + dimStyle.Render(age) + "\n")
+		used++
+		if i == m.cursor {
+			meta := state
+			if task.Repository != "" {
+				meta += dimStyle.Render(" · " + repositoryGroup(task.Repository))
+			}
+			b.WriteString(gutter + "  " + truncateWidth(meta, width-4) + "\n")
+			used++
 		}
-		if age := since(task.UpdatedAt); age != "" {
-			meta = append(meta, age)
-		}
-		b.WriteString(gutter + glyph + " " + title + "\n")
-		b.WriteString(gutter + "  " + dimStyle.Render(truncateWidth(strings.Join(meta, " · "), text)) + "\n\n")
 	}
-	if hidden := len(visible) - start - budget; hidden > 0 {
-		b.WriteString(dimStyle.Render("  "+strconv.Itoa(hidden)+" more ↓") + "\n")
+	if next < len(visible) {
+		b.WriteString(dimStyle.Render("  ↓ more") + "\n")
 	}
 	return b.String()
 }
