@@ -1,40 +1,29 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
-	"os"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/gantoine/phcloud/internal/chat"
 	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
-const (
-	dim   = "\x1b[2m"
-	bold  = "\x1b[1m"
-	cyan  = "\x1b[36m"
-	green = "\x1b[32m"
-	red   = "\x1b[31m"
-	reset = "\x1b[0m"
-
-	maxPrintedOutputLines = 6
-)
-
-const attachHelp = "Type a message and press Enter to send it. /approve, /always and /deny answer the agent's question. /stop interrupts it. Ctrl-C closes this view; the run keeps going."
+const viewerThrottle = 80 * time.Millisecond
 
 type viewSnapshot struct {
 	entries []chat.Entry
-	status  string
+	run     posthogcloud.Run
 	state   string
 	ready   bool
+	pending []posthogcloud.PendingApproval
 }
 
 func attach(paths paths, args []string) error {
@@ -49,159 +38,40 @@ func attach(paths paths, args []string) error {
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	source := &directSource{client: posthogcloud.NewClient(config, nil), taskID: flags.Arg(0), runID: flags.Arg(1), restart: make(chan struct{}, 1)}
-	viewer := &runViewer{source: source, out: os.Stdout, printed: map[string]printedEntry{}}
-	fmt.Fprintln(viewer.out, dim+attachHelp+reset)
-	go viewer.readInput(ctx, os.Stdin)
-	if err := source.run(ctx, viewer.render, viewer.note); err != nil && ctx.Err() == nil {
-		return err
-	}
-	return nil
-}
-
-type printedEntry struct {
-	text   string
-	status string
-}
-
-type runViewer struct {
-	source *directSource
-	out    io.Writer
-
-	mu        sync.Mutex
-	printed   map[string]printedEntry
-	lastState string
-	lastRun   string
-}
-
-func (v *runViewer) note(line string) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	fmt.Fprintln(v.out, line)
-}
-
-func (v *runViewer) render() {
-	view := v.source.snapshot()
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if !view.ready {
-		return
-	}
-	for i, entry := range view.entries {
-		growing := i == len(view.entries)-1 && view.state == posthogcloud.StateWorking && (entry.Kind == chat.KindAssistant || entry.Kind == chat.KindThinking)
-		if growing {
-			break
-		}
-		v.print(entry)
-	}
-	if view.status != v.lastRun || view.state != v.lastState {
-		v.lastRun, v.lastState = view.status, view.state
-		if line := statusLine(view.status, view.state); line != "" {
-			fmt.Fprintln(v.out, dim+"— "+line+reset)
-		}
-	}
-}
-
-func (v *runViewer) print(entry chat.Entry) {
-	previous, seen := v.printed[entry.ID]
-	switch entry.Kind {
-	case chat.KindUser:
-		if !seen {
-			fmt.Fprintln(v.out, "\n"+bold+cyan+"› "+entry.Text+reset)
-		}
-	case chat.KindAssistant:
-		if !seen {
-			fmt.Fprintln(v.out, "\n"+entry.Text)
-		}
-	case chat.KindThinking:
-		if !seen {
-			fmt.Fprintln(v.out, dim+"thinking: "+firstLine(entry.Text)+reset)
-		}
-	case chat.KindNotice:
-		if !seen || previous.text != entry.Text {
-			fmt.Fprintln(v.out, dim+"· "+entry.Text+reset)
-		}
-	case chat.KindTool:
-		tool := entry.Tool
-		if tool == nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := posthogcloud.NewClient(config, nil)
+	source := &directSource{client: client, taskID: flags.Arg(0), runID: flags.Arg(1), restart: make(chan struct{}, 1)}
+	view := newRunView(ctx, client, source, config, lipgloss.HasDarkBackground())
+	program := tea.NewProgram(view, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	var pending sync.Mutex
+	scheduled := false
+	changed := func() {
+		pending.Lock()
+		defer pending.Unlock()
+		if scheduled {
 			return
 		}
-		if !seen {
-			fmt.Fprintln(v.out, dim+"▸ "+reset+tool.Name+" "+dim+tool.Summary+reset)
-		}
-		if tool.Status != previous.status && tool.Status != chat.ToolRunning {
-			mark := green + "  ✓" + reset
-			if tool.Status == chat.ToolFailed {
-				mark = red + "  ✗" + reset
-			}
-			if preview := outputPreview(tool.Output); preview != "" {
-				mark += " " + dim + preview + reset
-			}
-			fmt.Fprintln(v.out, mark)
-		}
-		v.printed[entry.ID] = printedEntry{text: entry.Text, status: tool.Status}
-		return
+		scheduled = true
+		time.AfterFunc(viewerThrottle, func() {
+			pending.Lock()
+			scheduled = false
+			pending.Unlock()
+			program.Send(changedMsg{})
+		})
 	}
-	v.printed[entry.ID] = printedEntry{text: entry.Text}
-}
-
-func statusLine(status, state string) string {
-	switch status {
-	case "completed":
-		return "Done."
-	case "failed":
-		return "The run failed."
-	case "cancelled":
-		return "The run was stopped."
-	}
-	switch state {
-	case posthogcloud.StateWaiting:
-		return "Waiting for your approval: /approve, /always or /deny."
-	case posthogcloud.StateIdle:
-		return "Your turn."
-	}
-	return ""
-}
-
-func outputPreview(output string) string {
-	output = strings.TrimSpace(output)
-	if output == "" {
-		return ""
-	}
-	lines := strings.Split(output, "\n")
-	if len(lines) > maxPrintedOutputLines {
-		lines = append(lines[:maxPrintedOutputLines], fmt.Sprintf("… %d more lines", len(lines)-maxPrintedOutputLines))
-	}
-	return strings.Join(lines, "\n    ")
-}
-
-func firstLine(text string) string {
-	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
-	return chat.Truncate(first, chat.MaxSummaryLength)
-}
-
-func (v *runViewer) readInput(ctx context.Context, input io.Reader) {
-	scanner := bufio.NewScanner(input)
-	scanner.Buffer(make([]byte, 64<<10), 64<<10)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	go func() {
+		_ = source.run(ctx, changed, func(text string) { program.Send(noticeMsg{text}) })
+	}()
+	go func() {
+		taskCtx, taskCancel := context.WithTimeout(ctx, actionTimeout)
+		defer taskCancel()
+		if task, err := client.Task(taskCtx, source.taskID); err == nil {
+			program.Send(taskMsg{task})
 		}
-		if line == "/help" {
-			v.note(dim + attachHelp + reset)
-			continue
-		}
-		action, err := parseViewerLine(line)
-		if err == nil {
-			err = v.source.act(ctx, action)
-		}
-		if err != nil {
-			v.note(red + err.Error() + reset)
-		}
-	}
+	}()
+	_, err = program.Run()
+	return err
 }
 
 func parseViewerLine(line string) (viewerAction, error) {
@@ -216,7 +86,7 @@ func parseViewerLine(line string) (viewerAction, error) {
 		return viewerAction{kind: actionAnswer, mode: answerDeny}, nil
 	}
 	if strings.HasPrefix(line, "/") {
-		return viewerAction{}, fmt.Errorf("unknown command %s; /help lists them", line)
+		return viewerAction{}, fmt.Errorf("unknown command %s; try /stop, /approve, /always or /deny", line)
 	}
 	return viewerAction{kind: actionSend, text: line}, nil
 }
@@ -243,14 +113,14 @@ func (s *directSource) snapshot() viewSnapshot {
 		return viewSnapshot{}
 	}
 	entries, run, state, ready := follower.Snapshot()
-	return viewSnapshot{entries: entries, status: run.Status, state: state, ready: ready}
+	return viewSnapshot{entries: entries, run: run, state: state, ready: ready, pending: follower.Pending()}
 }
 
 func (s *directSource) run(ctx context.Context, changed func(), note func(string)) error {
 	for {
 		follower := posthogcloud.NewFollower(s.client, s.taskID, s.runID, posthogcloud.FollowerOptions{}, func(update posthogcloud.Update) {
 			if update.Err != nil {
-				note(red + "PostHog: " + update.Err.Error() + reset)
+				note("PostHog: " + update.Err.Error())
 				return
 			}
 			if update.Credential == nil {
@@ -264,7 +134,6 @@ func (s *directSource) run(ctx context.Context, changed func(), note func(string
 			return nil
 		}
 		changed()
-		note(dim + "The run has ended. Send a message to bring it back." + reset)
 		select {
 		case <-ctx.Done():
 			return nil
@@ -274,9 +143,10 @@ func (s *directSource) run(ctx context.Context, changed func(), note func(string
 }
 
 type viewerAction struct {
-	kind string
-	text string
-	mode string
+	kind   string
+	text   string
+	mode   string
+	option string
 }
 
 const (
@@ -290,6 +160,9 @@ func (s *directSource) act(ctx context.Context, action viewerAction) error {
 	case actionStop:
 		return stopRun(ctx, s.client, s.taskID, s.runID)
 	case actionAnswer:
+		if action.option != "" {
+			return answerOption(ctx, s.client, s.taskID, s.runID, s.current(), action.option)
+		}
 		return answerApproval(ctx, s.client, s.taskID, s.runID, s.current(), action.mode)
 	}
 	resumed, err := sendMessage(ctx, s.client, s.taskID, s.runID, action.text, s.snapshot().state == posthogcloud.StateWorking)

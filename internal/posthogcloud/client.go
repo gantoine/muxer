@@ -277,6 +277,12 @@ func (c *Client) FindTasks(ctx context.Context, find TaskQuery) ([]Task, error) 
 	return page.Results, err
 }
 
+func (c *Client) Task(ctx context.Context, taskID string) (Task, error) {
+	var task Task
+	err := c.getJSON(ctx, c.projectPath("tasks/"+url.PathEscape(taskID)+"/"), nil, &task)
+	return task, err
+}
+
 func (c *Client) Run(ctx context.Context, taskID, runID string) (Run, error) {
 	var run Run
 	err := c.getJSON(ctx, c.runPath(taskID, runID, ""), nil, &run)

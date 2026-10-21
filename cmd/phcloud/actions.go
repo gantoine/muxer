@@ -35,6 +35,14 @@ func answerApproval(ctx context.Context, client *posthogcloud.Client, taskID, ru
 	if optionID == "" {
 		return errors.New("the agent offered no matching choice; open the run in PostHog to answer it")
 	}
+	return answerOption(ctx, client, taskID, runID, follower, optionID)
+}
+
+func answerOption(ctx context.Context, client *posthogcloud.Client, taskID, runID string, follower *posthogcloud.Follower, optionID string) error {
+	if follower == nil || len(follower.Pending()) == 0 {
+		return errors.New("nothing is waiting for an answer")
+	}
+	request := follower.Pending()[0]
 	if _, err := client.CommandWithRetry(ctx, taskID, runID, "permission_response", map[string]any{"requestId": request.RequestID, "optionId": optionID}); err != nil {
 		return err
 	}

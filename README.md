@@ -42,7 +42,18 @@ To bill Claude to your own plan, run `claude setup-token`, then `phcloud claude-
 | `tab` | switch between Active and All |
 | `T` | save a Claude token |
 
-In a run's workspace, type to reply. `/approve`, `/always` and `/deny` answer approvals, `/stop` interrupts. Ctrl-C closes the view; the run keeps going.
+In a run's workspace you get the conversation with markdown, tool calls folded into one row, and a composer at the bottom:
+
+| Key | In a run |
+| --- | --- |
+| `enter` / `alt+enter` | send / new line |
+| `1` `2` `3`… | pick an answer when the agent asks |
+| `esc` | stop the agent's turn |
+| `ctrl+o` | show or hide tool details |
+| `pgup` `pgdn`, wheel | scroll |
+| `ctrl+c` | close the view; the run keeps going |
+
+New runs open on the prompt and remember the last repository, agent and billing. Press `tab` to change them.
 
 ## Commands
 
