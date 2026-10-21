@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	ImageRefPrefix   = "phc-image:"
+	ImageRefPrefix   = "phcloud-image:"
 	maxArtifactBytes = 30 << 20
 	attachmentsDir   = "/.posthog/attachments/"
 )

@@ -18,7 +18,7 @@ func TestPromptAttachmentsBecomeImageRefs(t *testing.T) {
 		{"type":"resource_link","uri":"file:///tmp/workspace/repos/acme/app/.posthog/attachments/r1/a2/notes.txt","name":"notes.txt","mimeType":"text/plain"}
 	]}`))
 	entries := transcript.Entries()
-	if len(entries) != 1 || entries[0].Text != "what is wrong here?" || len(entries[0].Images) != 1 || entries[0].Images[0] != "phc-image:r1/a1" {
+	if len(entries) != 1 || entries[0].Text != "what is wrong here?" || len(entries[0].Images) != 1 || entries[0].Images[0] != "phcloud-image:r1/a1" {
 		t.Fatalf("entries = %+v", entries)
 	}
 	runID, artifactID, ok := ParseImageRef(entries[0].Images[0])
