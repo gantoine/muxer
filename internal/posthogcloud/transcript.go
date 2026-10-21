@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gantoine/phcloud/internal/chat"
+	"github.com/gantoine/muxer/phcloud/internal/chat"
 )
 
 const (

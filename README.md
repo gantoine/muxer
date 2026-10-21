@@ -18,7 +18,7 @@ phcloud talks to PostHog and cmux directly. It needs no server, browser page or 
 ## Install
 
 ```sh
-go install github.com/gantoine/phcloud/cmd/phcloud@latest
+go install github.com/gantoine/muxer/phcloud/cmd/phcloud@latest
 phcloud connect      # paste a personal API key
 phcloud dock install # pin the manager in the cmux Dock
 ```

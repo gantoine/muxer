@@ -1,4 +1,4 @@
-module github.com/gantoine/phcloud
+module github.com/gantoine/muxer/phcloud
 
 go 1.26.4
 

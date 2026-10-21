@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gantoine/phcloud/internal/posthogcloud"
+	"github.com/gantoine/muxer/phcloud/internal/posthogcloud"
 )
 
 const (

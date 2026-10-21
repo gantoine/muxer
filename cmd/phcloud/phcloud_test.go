@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gantoine/phcloud/internal/posthogcloud"
+	"github.com/gantoine/muxer/phcloud/internal/posthogcloud"
 )
 
 func TestDockConfigKeepsOtherControls(t *testing.T) {

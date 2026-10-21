@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/gantoine/phcloud/internal/posthogcloud"
+	"github.com/gantoine/muxer/phcloud/internal/posthogcloud"
 )
 
 const (

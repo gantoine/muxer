@@ -16,8 +16,8 @@ import (
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/gantoine/phcloud/internal/chat"
-	"github.com/gantoine/phcloud/internal/posthogcloud"
+	"github.com/gantoine/muxer/phcloud/internal/chat"
+	"github.com/gantoine/muxer/phcloud/internal/posthogcloud"
 )
 
 const (

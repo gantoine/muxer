@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gantoine/phcloud/internal/posthogcloud"
+	"github.com/gantoine/muxer/phcloud/internal/posthogcloud"
 )
 
 const ungroupedName = "PostHog Cloud"
