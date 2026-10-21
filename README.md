@@ -153,6 +153,10 @@ Run `cmux automation reload` after editing the file, and `cmux automation test p
 
 On the phone, open a computer's settings and tap **Automations** to see its rules. You can turn each one on or off, see what it reacts to and what it does, read its recent activity, and reload the file after you edit it. Writing new rules still happens in the file on the computer.
 
+## PostHog Cloud runs
+
+[`phcloud`](phcloud/README.md) is a separate terminal tool that lists, starts and follows PostHog Cloud runs from the cmux Dock. Each run opens as a cmux workspace, so the phone shows it like any other terminal. The relay and the app don't need it.
+
 ## Updating the relay
 
 ```sh
