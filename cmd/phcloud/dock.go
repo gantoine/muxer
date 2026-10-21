@@ -23,7 +23,7 @@ func dockConfigPath() (string, error) {
 
 func dock(args []string) error {
 	if len(args) != 1 || (args[0] != "install" && args[0] != "uninstall") {
-		return errors.New("usage: phc dock install|uninstall")
+		return errors.New("usage: phcloud dock install|uninstall")
 	}
 	path, err := dockConfigPath()
 	if err != nil {

@@ -1,4 +1,4 @@
-# phc
+# phcloud
 
 A small terminal manager for PostHog Cloud runs, made to live in the [cmux](https://cmux.com) Dock.
 
@@ -13,19 +13,19 @@ While the manager is open, it also:
 - sends a cmux notification when a run needs you or finishes;
 - hands your Claude token to runs you started on your own Claude plan.
 
-phc talks to PostHog and cmux directly. It needs no server, browser page or relay.
+phcloud talks to PostHog and cmux directly. It needs no server, browser page or relay.
 
 ## Install
 
 ```sh
-go install github.com/gantoine/phc/cmd/phc@latest
-phc connect          # paste a personal API key
-phc dock install     # pin the manager in the cmux Dock
+go install github.com/gantoine/phcloud/cmd/phcloud@latest
+phcloud connect      # paste a personal API key
+phcloud dock install # pin the manager in the cmux Dock
 ```
 
 The personal API key needs the `task:read`, `task:write`, `user:read` and `integration:read` scopes. Pass `--host https://eu.posthog.com` to `connect` on the EU cloud.
 
-To bill Claude to your own plan, run `claude setup-token`, then `phc claude-token` and paste the token.
+To bill Claude to your own plan, run `claude setup-token`, then `phcloud claude-token` and paste the token.
 
 ## Keys
 
@@ -47,12 +47,12 @@ In a run's workspace, type to reply. `/approve`, `/always` and `/deny` answer ap
 ## Commands
 
 ```
-phc                      the manager
-phc connect | status | disconnect
-phc claude-token [--clear]
-phc new --repo owner/name [--agent claude|codex] [--claude-plan] "prompt"
-phc attach TASK RUN
-phc dock install | uninstall
+phcloud                  the manager
+phcloud connect | status | disconnect
+phcloud claude-token [--clear]
+phcloud new --repo owner/name [--agent claude|codex] [--claude-plan] "prompt"
+phcloud attach TASK RUN
+phcloud dock install | uninstall
 ```
 
-Settings live in `~/.config/phc` (the key is stored with `0600` permissions). Set `PHC_CONFIG_DIR` to use another folder.
+Settings live in `~/.config/phcloud` (the key is stored with `0600` permissions). Set `PHCLOUD_CONFIG_DIR` to use another folder.

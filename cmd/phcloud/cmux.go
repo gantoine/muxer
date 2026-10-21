@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gantoine/phc/internal/posthogcloud"
+	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
 const ungroupedName = "PostHog Cloud"
@@ -34,7 +34,7 @@ func newCmux(statePath string) *cmux {
 		bin = "/Applications/cmux.app/Contents/Resources/bin/cmux"
 	}
 	self, _ := os.Executable()
-	c := &cmux{bin: bin, self: cmp.Or(self, "phc"), path: statePath, workspaces: map[string]string{}, lanes: map[string]string{}}
+	c := &cmux{bin: bin, self: cmp.Or(self, "phcloud"), path: statePath, workspaces: map[string]string{}, lanes: map[string]string{}}
 	if raw, err := os.ReadFile(statePath); err == nil {
 		_ = json.Unmarshal(raw, &c.workspaces)
 	}
@@ -131,8 +131,8 @@ func (c *cmux) open(ctx context.Context, task posthogcloud.Task) error {
 		WorkspaceID string `json:"workspace_id"`
 	}
 	params := map[string]any{"title": taskTitle(task), "cwd": home, "focus": true, "initial_input": command}
-	if dir := os.Getenv("PHC_CONFIG_DIR"); dir != "" {
-		params["workspace_env"] = map[string]string{"PHC_CONFIG_DIR": dir}
+	if dir := os.Getenv("PHCLOUD_CONFIG_DIR"); dir != "" {
+		params["workspace_env"] = map[string]string{"PHCLOUD_CONFIG_DIR": dir}
 	}
 	if err := c.rpc(ctx, "workspace.create", params, &created); err != nil {
 		return err
@@ -166,7 +166,7 @@ func (c *cmux) group(ctx context.Context, name, cwd string) string {
 			ID string `json:"id"`
 		} `json:"group"`
 	}
-	params := map[string]any{"name": name, "idempotency_key": "phc:" + name, "cwd": cwd}
+	params := map[string]any{"name": name, "idempotency_key": "phcloud:" + name, "cwd": cwd}
 	if err := c.rpc(ctx, "workspace.group.create", params, &made); err != nil {
 		return ""
 	}

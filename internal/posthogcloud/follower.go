@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gantoine/phc/internal/chat"
+	"github.com/gantoine/phcloud/internal/chat"
 )
 
 const (

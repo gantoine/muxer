@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gantoine/phc/internal/chat"
+	"github.com/gantoine/phcloud/internal/chat"
 )
 
 func feedAll(t *Transcript, lines ...string) []chat.Entry {

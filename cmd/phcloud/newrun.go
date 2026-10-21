@@ -14,7 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/gantoine/phc/internal/posthogcloud"
+	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
 const (
@@ -326,20 +326,20 @@ func startRunFromCLI(paths paths, args []string) error {
 	flags := flag.NewFlagSet("new", flag.ContinueOnError)
 	repository := flags.String("repo", "", "the GitHub repository to work in, as owner/name")
 	agent := flags.String("agent", posthogcloud.AgentClaude, "claude or codex")
-	claudePlan := flags.Bool("claude-plan", false, "bill Claude to your own plan (needs `phc claude-token`)")
+	claudePlan := flags.Bool("claude-plan", false, "bill Claude to your own plan (needs `phcloud claude-token`)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	prompt := strings.TrimSpace(strings.Join(flags.Args(), " "))
 	if *repository == "" || prompt == "" {
-		return errors.New(`usage: phc new --repo owner/name [--agent claude|codex] [--claude-plan] "what to do"`)
+		return errors.New(`usage: phcloud new --repo owner/name [--agent claude|codex] [--claude-plan] "what to do"`)
 	}
 	config, err := loadConfig(paths)
 	if err != nil {
 		return err
 	}
 	if *claudePlan && config.ClaudeToken == "" {
-		return errors.New("save a Claude token first with `phc claude-token`")
+		return errors.New("save a Claude token first with `phcloud claude-token`")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -366,7 +366,7 @@ func startRunFromCLI(paths paths, args []string) error {
 	task = startedTask(task, run, posthogcloud.StartRequest{Repository: *chosen, Prompt: prompt})
 	fmt.Printf("Started %s/project/%d/tasks/%s\n", strings.TrimSuffix(config.Host, "/"), config.ProjectID, task.ID)
 	if err := newCmux(paths.workspaces).open(ctx, task); err != nil {
-		fmt.Printf("Follow it with: phc attach %s %s\n", task.ID, run.ID)
+		fmt.Printf("Follow it with: phcloud attach %s %s\n", task.ID, run.ID)
 	}
 	return nil
 }

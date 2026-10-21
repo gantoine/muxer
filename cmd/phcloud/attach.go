@@ -13,8 +13,8 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/gantoine/phc/internal/chat"
-	"github.com/gantoine/phc/internal/posthogcloud"
+	"github.com/gantoine/phcloud/internal/chat"
+	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
 const (
@@ -43,7 +43,7 @@ func attach(paths paths, args []string) error {
 		return err
 	}
 	if flags.NArg() != 2 {
-		return errors.New("usage: phc attach TASK RUN")
+		return errors.New("usage: phcloud attach TASK RUN")
 	}
 	config, err := loadConfig(paths)
 	if err != nil {

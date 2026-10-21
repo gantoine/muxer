@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/gantoine/phc/internal/posthogcloud"
+	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
 const (
@@ -68,7 +68,7 @@ func status(paths paths) error {
 		return err
 	}
 	if !ok {
-		fmt.Println("Not connected. Run `phc connect`.")
+		fmt.Println("Not connected. Run `phcloud connect`.")
 		return nil
 	}
 	fmt.Printf("Connected to %s, project %d, as %s.\n", config.Host, config.ProjectID, config.Email)

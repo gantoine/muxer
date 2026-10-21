@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gantoine/phc/internal/chat"
-	"github.com/gantoine/phc/internal/posthogcloud"
+	"github.com/gantoine/phcloud/internal/chat"
+	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
 const (

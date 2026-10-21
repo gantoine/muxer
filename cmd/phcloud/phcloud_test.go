@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gantoine/phc/internal/posthogcloud"
+	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
 func TestDockConfigKeepsOtherControls(t *testing.T) {
@@ -18,21 +18,21 @@ func TestDockConfigKeepsOtherControls(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if _, err := updateDockConfig(path, "/bin/phc", true); err != nil {
+		if _, err := updateDockConfig(path, "/bin/phcloud", true); err != nil {
 			t.Fatal(err)
 		}
 	}
 	controls := readControls(t, path)
-	if len(controls) != 2 || controls[0]["id"] != "git" || controls[1]["id"] != dockControlID || controls[1]["command"] != "'/bin/phc'" {
+	if len(controls) != 2 || controls[0]["id"] != "git" || controls[1]["id"] != dockControlID || controls[1]["command"] != "'/bin/phcloud'" {
 		t.Fatalf("controls = %v", controls)
 	}
-	if changed, err := updateDockConfig(path, "/bin/phc", false); err != nil || !changed {
+	if changed, err := updateDockConfig(path, "/bin/phcloud", false); err != nil || !changed {
 		t.Fatalf("uninstall = %v %v", changed, err)
 	}
 	if controls := readControls(t, path); len(controls) != 1 || controls[0]["id"] != "git" {
 		t.Fatalf("controls after uninstall = %v", controls)
 	}
-	if changed, _ := updateDockConfig(path, "/bin/phc", false); changed {
+	if changed, _ := updateDockConfig(path, "/bin/phcloud", false); changed {
 		t.Fatal("a second uninstall shouldn't touch the file")
 	}
 }

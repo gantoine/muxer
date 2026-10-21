@@ -13,7 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/gantoine/phc/internal/posthogcloud"
+	"github.com/gantoine/phcloud/internal/posthogcloud"
 )
 
 const (
@@ -222,7 +222,7 @@ func (m *manager) updateList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.failure = ""
 			return m, tea.ExecProcess(exec.Command(m.cmux.self, "connect"), func(err error) tea.Msg {
 				if err != nil {
-					return errMsg{fmt.Errorf("connecting failed; run `phc connect` in a terminal to see why")}
+					return errMsg{fmt.Errorf("connecting failed; run `phcloud connect` in a terminal to see why")}
 				}
 				return connectMsg{}
 			})
