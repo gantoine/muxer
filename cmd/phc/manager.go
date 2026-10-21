@@ -129,7 +129,7 @@ func (m *manager) connect() {
 }
 
 func (m *manager) Init() tea.Cmd {
-	return tea.Batch(m.load(), tick())
+	return tea.Batch(tea.SetWindowTitle("Cloud runs"), m.load(), tick())
 }
 
 func tick() tea.Cmd {
@@ -219,7 +219,13 @@ func (m *manager) updateList(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if !m.connected {
 		switch key.String() {
 		case "c":
-			return m, m.runSelf(connectMsg{}, "connect")
+			m.failure = ""
+			return m, tea.ExecProcess(exec.Command(m.cmux.self, "connect"), func(err error) tea.Msg {
+				if err != nil {
+					return errMsg{fmt.Errorf("connecting failed; run `phc connect` in a terminal to see why")}
+				}
+				return connectMsg{}
+			})
 		case "q":
 			return m, tea.Quit
 		}
@@ -369,6 +375,9 @@ func (m *manager) View() string {
 	switch {
 	case !m.connected:
 		b.WriteString("PostHog isn't connected yet.\n\n" + accentStyle.Render("c") + " connect with a personal API key\n")
+		if m.failure != "" {
+			b.WriteString("\n" + alertStyle.Render(m.failure) + "\n")
+		}
 		return b.String()
 	case !m.loaded && m.failure == "":
 		b.WriteString(dimStyle.Render("Loading…") + "\n")
