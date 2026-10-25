@@ -33,59 +33,18 @@ You don't need to sign in to cmux. Everything runs between your phone and your o
 > [!IMPORTANT]
 > This is an independent project. It is not made, endorsed, or supported by Manaflow or the cmux team.
 
-## What you can do
+## Features
 
-### Answer agents from notifications
-
-When a coding agent asks for permission, asks a question, or has a plan ready, you get a notification with action buttons. From there you can allow a tool once or always, deny it, pick an answer or type your own, and approve, auto-accept, revise or reject a plan without opening the app. The same prompts show as a card in the chat and in the **Waiting for you** home screen widget. If you answer on the computer instead, the prompt disappears from the phone.
-
-### Agent sessions as a chat
-
-A terminal running Claude Code, Codex or Pi opens as a chat. It shows your messages, the agent's replies with tables, links and code, its thinking, edit diffs and to-do lists, and each tool it ran (tap one to see its output).
-
-- Type or dictate a reply, mention files with `@`, and attach screenshots or camera photos.
-- Tap stop to interrupt the agent.
-- While a prompt is open, a message you send waits in cmux until you've answered, and a receipt shows when the agent got it.
-- When a model is overloaded and cmux schedules a retry, a banner counts down to it.
-
-### Starting and resuming tasks
-
-- Start a new task: pick a folder or a workspace that is already open, choose Claude Code, Codex or Pi, and write the first prompt. The session opens as a chat.
-- Search past agent sessions and resume one. A session that is still running opens its terminal.
-- Share text or a link from any app into an agent's message box. Your recent agent workspaces show up in the share sheet.
-
-### Notifications
-
-- Every cmux notification reaches the phone with its text, including ones from your own [cmux automations](#custom-alerts-with-cmux-automations). Reading it on the computer clears it on the phone, and the other way round.
-- Android treats each agent workspace as a conversation. Notifications stack per terminal, and you can reply with **Message**, open the terminal in a floating bubble, or pin the workspace to the home screen.
-- Turn on **Stay connected in the background** for a computer to get its notifications while the app is closed. The notification that keeps the connection open lists what your agents are doing, with timers and retry countdowns. On Android 16 it also shows as a chip in the status bar.
-- Agent requests, finished agents and other terminal alerts come in separate channels you can tune in Android's settings.
-
-### Workspaces
-
-- Each workspace shows its color, agent status (working, waiting, needs you or retrying), unread count, git branch, ports and last activity. Search by name, folder or terminal.
-- Create, rename, close, pin and recolor workspaces, mark them read, set their lane and description, edit their checklists, and organize them into cmux groups.
-- Rename, restart or close terminals, swipe between a workspace's panes, and reconnect SSH workspaces.
-
-### Terminal
-
-- Open any terminal live. cmux resizes it to the phone's screen while you watch it.
-- Type into it with the key bar (sticky Ctrl, Option and Shift, Esc, Tab, arrows and paste) or a hardware keyboard.
-- Scroll back through up to 2,000 lines without moving the view on your computer, and copy text from history or the live screen.
-
-### Computers
-
-- Pair several computers and see each one's CPU and RAM. Your cmux Cloud VMs are listed too, and you can pause and resume them.
-- See which agents and workspaces use the most CPU and memory.
-- Turn on **Keep this computer awake** so idle sleep doesn't cut the phone off while agents run.
-- Open a terminal's dev server ports in the phone's browser over Tailscale (see [Opening a terminal's ports](#opening-a-terminals-ports)).
-- Turn cmux automations on or off, read their activity and reload them.
-
-### Widgets, tile and app lock
-
-- The **Waiting for you** widget lets you answer prompts from the home screen. The **Workspaces** widget shows each workspace's status.
-- A Quick Settings tile turns background connections on or off for every computer at once.
-- **Lock Muxer** asks for your fingerprint, face or screen lock (see [Security](#security)).
+- Answer agent permission requests, questions and plans from a notification or a home screen widget.
+- See Claude Code, Codex and Pi sessions as a chat, and reply with text, voice, `@` file mentions and photos.
+- Start a new agent task in a folder or open workspace, or resume a past session.
+- Get every cmux notification on your phone, with inline replies, bubbles and background delivery.
+- Organize workspaces: create, rename, pin, recolor, group, and track agent status and unread counts.
+- Use a live terminal with sticky modifier keys, local scrollback and copy.
+- Share text and links from any app to an agent.
+- Check each computer's CPU and RAM, keep it awake, and manage cmux Cloud VMs and automations.
+- Open a terminal's ports in your phone's browser over Tailscale.
+- Lock the app with your fingerprint, face or screen lock.
 
 ## How it works
 
